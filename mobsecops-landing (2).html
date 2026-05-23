@@ -1,0 +1,2096 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>MobSecOps — Pipeline de Sécurité Mobile</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --bg: #050a0f;
+    --surface: #0a1420;
+    --border: #1a2d40;
+    --accent: #00d4ff;
+    --accent2: #ff6b35;
+    --accent3: #7fff7f;
+    --critical: #ff3c3c;
+    --high: #ff6b35;
+    --medium: #ffd700;
+    --low: #7fff7f;
+    --text: #e8f4ff;
+    --muted: #5a7a94;
+    --card: #0d1e2e;
+    --glow: rgba(0,212,255,0.15);
+  }
+
+  * { margin:0; padding:0; box-sizing:border-box; }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    font-family: 'Syne', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    overflow-x: hidden;
+    cursor: crosshair;
+  }
+
+  /* ── NOISE TEXTURE OVERLAY ── */
+  body::before {
+    content:'';
+    position:fixed; inset:0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.03'/%3E%3C/svg%3E");
+    pointer-events:none; z-index:0; opacity:0.4;
+  }
+
+  /* ── ANIMATED GRID BG ── */
+  .grid-bg {
+    position:fixed; inset:0; z-index:0;
+    background-image:
+      linear-gradient(rgba(0,212,255,0.04) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,212,255,0.04) 1px, transparent 1px);
+    background-size: 60px 60px;
+    animation: gridMove 20s linear infinite;
+  }
+  @keyframes gridMove {
+    0% { background-position: 0 0; }
+    100% { background-position: 60px 60px; }
+  }
+
+  /* ── NAV ── */
+  nav {
+    position:fixed; top:0; left:0; right:0; z-index:100;
+    display:flex; align-items:center; justify-content:space-between;
+    padding:20px 60px;
+    background: rgba(5,10,15,0.85);
+    backdrop-filter: blur(20px);
+    border-bottom: 1px solid var(--border);
+  }
+  .logo {
+    font-size:1.4rem; font-weight:800; letter-spacing:-0.02em;
+    color: var(--accent);
+    text-shadow: 0 0 30px rgba(0,212,255,0.5);
+  }
+  .logo span { color: var(--accent2); }
+  nav ul { display:flex; gap:40px; list-style:none; }
+  nav a { color: var(--muted); text-decoration:none; font-size:0.9rem; font-weight:600;
+          letter-spacing:0.05em; text-transform:uppercase; transition:color 0.2s; }
+  nav a:hover { color: var(--accent); }
+  .nav-cta {
+    background: var(--accent); color: var(--bg) !important;
+    padding:8px 20px; border-radius:4px;
+    font-family:'JetBrains Mono', monospace !important;
+  }
+  .nav-cta:hover { background: #fff !important; color: var(--bg) !important; }
+
+  /* ── HERO ── */
+  .hero {
+    position:relative; z-index:1;
+    min-height:100vh;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    padding:120px 40px 80px;
+    text-align:center;
+    overflow:hidden;
+  }
+
+  .hero-orb {
+    position:absolute;
+    border-radius:50%; filter:blur(80px); pointer-events:none;
+  }
+  .orb1 { width:600px; height:600px; background:rgba(0,212,255,0.08); top:-100px; left:-100px; animation: orbFloat 8s ease-in-out infinite; }
+  .orb2 { width:400px; height:400px; background:rgba(255,107,53,0.08); bottom:-50px; right:-50px; animation: orbFloat 10s ease-in-out infinite reverse; }
+  @keyframes orbFloat {
+    0%,100% { transform:translate(0,0); }
+    50% { transform:translate(30px,-30px); }
+  }
+
+  .badge {
+    display:inline-flex; align-items:center; gap:8px;
+    background:rgba(0,212,255,0.1); border:1px solid rgba(0,212,255,0.3);
+    border-radius:100px; padding:6px 16px; margin-bottom:32px;
+    font-family:'JetBrains Mono', monospace; font-size:0.75rem; color:var(--accent);
+    animation: fadeDown 0.6s ease both;
+  }
+  .badge-dot { width:6px; height:6px; border-radius:50%; background:var(--accent3); animation:pulse 1.5s ease infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+  h1 {
+    font-size:clamp(3rem, 8vw, 7rem);
+    font-weight:800; line-height:1.0; letter-spacing:-0.04em;
+    animation: fadeDown 0.6s 0.1s ease both;
+  }
+  h1 em { font-style:normal; color:var(--accent); display:block; }
+  h1 .strike { position:relative; color:var(--muted); }
+  h1 .strike::after {
+    content:''; position:absolute; left:0; top:50%; right:0; height:4px;
+    background:var(--critical); transform:translateY(-50%);
+  }
+
+  .hero-sub {
+    max-width:650px; margin:32px auto;
+    font-size:1.15rem; line-height:1.7; color:var(--muted);
+    animation: fadeDown 0.6s 0.2s ease both;
+  }
+  .hero-sub strong { color:var(--text); }
+
+  .hero-ctas {
+    display:flex; gap:16px; justify-content:center; flex-wrap:wrap;
+    animation: fadeDown 0.6s 0.3s ease both;
+    margin-top: 48px;
+  }
+  .btn-primary {
+    display:inline-flex; align-items:center; gap:10px;
+    background:var(--accent); color:var(--bg);
+    padding:14px 32px; border-radius:4px; font-weight:700; font-size:1rem;
+    text-decoration:none; cursor:pointer; border:none;
+    transition: all 0.2s; box-shadow:0 0 40px rgba(0,212,255,0.3);
+    font-family:'Syne',sans-serif;
+  }
+  .btn-primary:hover { background:#fff; transform:translateY(-2px); box-shadow:0 0 60px rgba(0,212,255,0.5); }
+  .btn-outline {
+    display:inline-flex; align-items:center; gap:10px;
+    background:transparent; color:var(--text);
+    padding:14px 32px; border-radius:4px; font-weight:600; font-size:1rem;
+    text-decoration:none; cursor:pointer;
+    border:1px solid var(--border); font-family:'Syne',sans-serif;
+    transition: all 0.2s;
+  }
+  .btn-outline:hover { border-color:var(--accent); color:var(--accent); transform:translateY(-2px); }
+
+  /* ── LIVE TERMINAL ── */
+  .terminal-wrap {
+    position:relative; z-index:1;
+    max-width:900px; margin:80px auto 0;
+    animation: fadeDown 0.6s 0.4s ease both;
+  }
+  .terminal {
+    background:rgba(10,20,32,0.9);
+    border:1px solid var(--border);
+    border-radius:12px; overflow:hidden;
+    box-shadow:0 40px 80px rgba(0,0,0,0.6), 0 0 0 1px rgba(0,212,255,0.05);
+  }
+  .term-header {
+    display:flex; align-items:center; gap:8px; padding:14px 20px;
+    background:rgba(0,0,0,0.3); border-bottom:1px solid var(--border);
+  }
+  .term-dot { width:12px; height:12px; border-radius:50%; }
+  .term-dot.r{background:#ff5f57;} .term-dot.y{background:#febc2e;} .term-dot.g{background:#28c840;}
+  .term-title { margin-left:auto; margin-right:auto; font-family:'JetBrains Mono',monospace; font-size:0.75rem; color:var(--muted); }
+  .term-body { padding:24px; font-family:'JetBrains Mono',monospace; font-size:0.82rem; line-height:1.8; min-height:260px; }
+  .term-line { opacity:0; transform:translateX(-8px); animation:termLine 0.4s forwards; }
+  .t-cyan { color:var(--accent); }
+  .t-green { color:var(--accent3); }
+  .t-orange { color:var(--accent2); }
+  .t-red { color:var(--critical); }
+  .t-yellow { color:var(--medium); }
+  .t-muted { color:var(--muted); }
+  .t-bold { font-weight:600; }
+  .cursor { display:inline-block; width:8px; height:16px; background:var(--accent); animation:blink 1s step-end infinite; vertical-align:middle; }
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
+  @keyframes termLine { to { opacity:1; transform:translateX(0); } }
+
+  @keyframes fadeDown {
+    from { opacity:0; transform:translateY(-20px); }
+    to { opacity:1; transform:translateY(0); }
+  }
+
+  /* ── SECTIONS ── */
+  section { position:relative; z-index:1; }
+
+  .section-label {
+    font-family:'JetBrains Mono',monospace; font-size:0.75rem;
+    color:var(--accent); letter-spacing:0.15em; text-transform:uppercase;
+    margin-bottom:16px;
+  }
+  .section-title {
+    font-size:clamp(2rem,4vw,3.5rem); font-weight:800; letter-spacing:-0.03em;
+    line-height:1.1;
+  }
+  .section-sub { color:var(--muted); font-size:1.05rem; line-height:1.7; max-width:600px; margin-top:16px; }
+
+  /* ── ARCHITECTURE ── */
+  .architecture {
+    padding:120px 60px;
+    background:linear-gradient(180deg, transparent, rgba(0,212,255,0.02), transparent);
+  }
+  .arch-header { text-align:center; margin-bottom:80px; }
+
+  .pipeline-flow {
+    display:flex; align-items:center; justify-content:center;
+    gap:0; flex-wrap:wrap; max-width:1100px; margin:0 auto;
+  }
+  .pipe-node {
+    background:var(--card); border:1px solid var(--border);
+    border-radius:12px; padding:24px 20px; text-align:center;
+    min-width:140px; flex:0 0 auto;
+    transition:all 0.3s; position:relative;
+    cursor:default;
+  }
+  .pipe-node:hover {
+    border-color:var(--accent); transform:translateY(-6px);
+    box-shadow:0 20px 40px rgba(0,0,0,0.4), 0 0 20px rgba(0,212,255,0.15);
+  }
+  .pipe-node .node-icon { font-size:2rem; margin-bottom:12px; }
+  .pipe-node .node-name { font-size:0.8rem; font-weight:700; letter-spacing:0.05em; color:var(--text); }
+  .pipe-node .node-port { font-family:'JetBrains Mono',monospace; font-size:0.7rem; color:var(--muted); margin-top:4px; }
+  .pipe-node.trigger { border-color:rgba(0,212,255,0.4); }
+  .pipe-node.ai-node { border-color:rgba(127,255,127,0.3); }
+  .pipe-node.final { border-color:rgba(255,107,53,0.4); }
+
+  .pipe-arrow {
+    color:var(--muted); font-size:1.4rem; padding:0 4px; flex-shrink:0;
+  }
+
+  .services-grid {
+    display:grid; grid-template-columns:repeat(auto-fill,minmax(160px,1fr));
+    gap:12px; max-width:1100px; margin:60px auto 0;
+  }
+  .svc-card {
+    background:var(--card); border:1px solid var(--border);
+    border-radius:10px; padding:20px 16px;
+    transition:all 0.3s; cursor:default;
+  }
+  .svc-card:hover { border-color:var(--accent); transform:translateY(-4px); box-shadow:0 16px 32px rgba(0,0,0,0.3); }
+  .svc-name { font-size:0.85rem; font-weight:700; margin-bottom:6px; }
+  .svc-port { font-family:'JetBrains Mono',monospace; font-size:0.7rem; color:var(--muted); }
+  .svc-desc { font-size:0.75rem; color:var(--muted); margin-top:8px; line-height:1.5; }
+  .svc-badge { display:inline-block; margin-top:8px; font-size:0.65rem; padding:2px 8px; border-radius:100px; font-family:'JetBrains Mono',monospace; }
+  .badge-apk { background:rgba(0,212,255,0.1); color:var(--accent); border:1px solid rgba(0,212,255,0.2); }
+  .badge-repo { background:rgba(255,107,53,0.1); color:var(--accent2); border:1px solid rgba(255,107,53,0.2); }
+
+  /* ── FEATURES ── */
+  .features { padding:120px 60px; }
+  .features-header { margin-bottom:80px; }
+
+  .features-grid {
+    display:grid; grid-template-columns:repeat(auto-fill,minmax(320px,1fr));
+    gap:24px; max-width:1200px; margin:0 auto;
+  }
+  .feat-card {
+    background:var(--card); border:1px solid var(--border);
+    border-radius:14px; padding:36px 32px;
+    transition:all 0.3s; position:relative; overflow:hidden;
+  }
+  .feat-card::before {
+    content:''; position:absolute; inset:0; opacity:0;
+    background:linear-gradient(135deg, rgba(0,212,255,0.05), transparent);
+    transition:opacity 0.3s;
+  }
+  .feat-card:hover::before { opacity:1; }
+  .feat-card:hover { border-color:rgba(0,212,255,0.3); transform:translateY(-4px); }
+
+  .feat-icon {
+    font-size:2.2rem; margin-bottom:20px; display:block;
+  }
+  .feat-title { font-size:1.15rem; font-weight:700; margin-bottom:12px; }
+  .feat-desc { color:var(--muted); font-size:0.9rem; line-height:1.7; }
+  .feat-tags { display:flex; flex-wrap:wrap; gap:6px; margin-top:20px; }
+  .tag {
+    font-family:'JetBrains Mono',monospace; font-size:0.7rem; padding:3px 10px;
+    border-radius:4px; background:rgba(0,212,255,0.08); color:var(--accent);
+    border:1px solid rgba(0,212,255,0.15);
+  }
+
+  /* ── SCANNERS DETAIL ── */
+  .scanners { padding:120px 60px; background:rgba(0,212,255,0.02); }
+  .scanners-header { text-align:center; margin-bottom:80px; }
+
+  .scanner-grid {
+    display:grid; grid-template-columns:repeat(auto-fill,minmax(280px,1fr));
+    gap:20px; max-width:1200px; margin:0 auto;
+  }
+  .scanner-card {
+    background:var(--card); border-left:4px solid transparent;
+    border-radius:0 12px 12px 0; padding:28px;
+    transition:all 0.3s;
+  }
+  .scanner-card:hover { transform:translateX(6px); }
+  .sc-mobsf { border-left-color:#00d4ff; }
+  .sc-gitleaks { border-left-color:#ff6b35; }
+  .sc-androguard { border-left-color:#7fff7f; }
+  .sc-permissions { border-left-color:#ffd700; }
+  .sc-network { border-left-color:#c084fc; }
+  .sc-obfuscation { border-left-color:#fb923c; }
+  .sc-ssl { border-left-color:#34d399; }
+  .sc-virustotal { border-left-color:#f472b6; }
+  .sc-syft { border-left-color:#60a5fa; }
+
+  .sc-header { display:flex; align-items:center; gap:12px; margin-bottom:14px; }
+  .sc-icon { font-size:1.6rem; }
+  .sc-name { font-weight:700; font-size:1rem; }
+  .sc-port-tag { font-family:'JetBrains Mono',monospace; font-size:0.7rem; color:var(--muted); }
+  .sc-desc { color:var(--muted); font-size:0.85rem; line-height:1.6; margin-bottom:14px; }
+  .sc-detects { font-size:0.78rem; }
+  .sc-detects span { display:inline-block; margin-right:6px; margin-bottom:4px; padding:2px 8px; border-radius:4px; background:rgba(255,255,255,0.05); color:var(--text); border:1px solid var(--border); font-family:'JetBrains Mono',monospace; }
+
+  /* ── SEVERITY TABLE ── */
+  .severity-row {
+    display:flex; align-items:center; gap:12px; padding:10px 0;
+    border-bottom:1px solid var(--border);
+  }
+  .sev-dot { width:12px; height:12px; border-radius:50%; flex-shrink:0; }
+  .sev-name { font-weight:700; font-size:0.85rem; width:80px; }
+  .sev-score { font-family:'JetBrains Mono',monospace; font-size:0.8rem; color:var(--muted); }
+
+  /* ── AI REPORT ── */
+  .ai-section { padding:120px 60px; }
+  .ai-inner { max-width:1200px; margin:0 auto; display:grid; grid-template-columns:1fr 1fr; gap:80px; align-items:center; }
+  .ai-demo {
+    background:var(--card); border:1px solid var(--border);
+    border-radius:16px; overflow:hidden;
+  }
+  .ai-demo-header {
+    background:linear-gradient(135deg,rgba(127,255,127,0.1),rgba(0,212,255,0.1));
+    border-bottom:1px solid var(--border); padding:20px 24px;
+    display:flex; align-items:center; justify-content:space-between;
+  }
+  .ai-demo-title { font-weight:700; font-size:0.9rem; }
+  .risk-badge {
+    font-family:'JetBrains Mono',monospace; font-size:0.75rem; padding:4px 12px;
+    border-radius:4px; font-weight:600;
+  }
+  .risk-high { background:rgba(255,107,53,0.2); color:var(--high); border:1px solid rgba(255,107,53,0.3); }
+  .risk-critical { background:rgba(255,60,60,0.2); color:var(--critical); border:1px solid rgba(255,60,60,0.3); }
+  .risk-medium { background:rgba(255,215,0,0.2); color:var(--medium); border:1px solid rgba(255,215,0,0.3); }
+  .risk-low { background:rgba(127,255,127,0.2); color:var(--low); border:1px solid rgba(127,255,127,0.3); }
+
+  .ai-demo-body { padding:24px; }
+  .ai-summary { font-size:0.85rem; color:var(--muted); line-height:1.7; margin-bottom:20px; }
+  .ticket-item {
+    background:rgba(0,0,0,0.3); border:1px solid var(--border);
+    border-radius:8px; padding:14px 16px; margin-bottom:10px;
+  }
+  .ticket-header { display:flex; align-items:center; gap:10px; margin-bottom:6px; }
+  .ticket-sev { font-family:'JetBrains Mono',monospace; font-size:0.7rem; padding:2px 8px; border-radius:3px; font-weight:600; }
+  .ticket-title-text { font-size:0.85rem; font-weight:600; }
+  .ticket-effort { font-family:'JetBrains Mono',monospace; font-size:0.7rem; color:var(--muted); margin-left:auto; }
+  .ticket-rem { font-size:0.78rem; color:var(--muted); line-height:1.5; }
+
+  .push-banner {
+    display:flex; align-items:center; gap:12px; padding:14px 16px;
+    border-radius:8px; margin-top:16px;
+    font-size:0.85rem; font-weight:600;
+  }
+  .push-blocked { background:rgba(255,60,60,0.1); border:1px solid rgba(255,60,60,0.3); color:var(--critical); }
+  .push-ok { background:rgba(127,255,127,0.1); border:1px solid rgba(127,255,127,0.3); color:var(--low); }
+
+  /* ── WEBHOOK FLOW ── */
+  .webhook-section { padding:120px 60px; background:rgba(255,107,53,0.02); }
+  .webhook-inner { max-width:900px; margin:0 auto; }
+
+  .flow-steps { margin-top:60px; }
+  .flow-step {
+    display:flex; gap:32px; margin-bottom:48px; position:relative;
+  }
+  .flow-step::before {
+    content:''; position:absolute; left:23px; top:52px; width:2px;
+    height:calc(100% + 8px); background:var(--border);
+  }
+  .flow-step:last-child::before { display:none; }
+  .step-num {
+    width:48px; height:48px; border-radius:50%; flex-shrink:0;
+    background:var(--card); border:2px solid var(--accent);
+    display:flex; align-items:center; justify-content:center;
+    font-family:'JetBrains Mono',monospace; font-weight:700; font-size:0.9rem; color:var(--accent);
+  }
+  .step-content h3 { font-size:1.1rem; font-weight:700; margin-bottom:8px; }
+  .step-content p { color:var(--muted); font-size:0.9rem; line-height:1.7; }
+  .step-code {
+    font-family:'JetBrains Mono',monospace; font-size:0.78rem;
+    background:rgba(0,0,0,0.4); border:1px solid var(--border);
+    border-radius:6px; padding:10px 14px; margin-top:12px; color:var(--accent);
+    overflow-x:auto; white-space:pre;
+  }
+
+  /* ── API SECTION ── */
+  .api-section { padding:120px 60px; }
+  .api-inner { max-width:1100px; margin:0 auto; display:grid; grid-template-columns:1fr 1.5fr; gap:60px; align-items:start; }
+  .api-code {
+    background:var(--card); border:1px solid var(--border);
+    border-radius:12px; overflow:hidden;
+  }
+  .api-code-header {
+    display:flex; justify-content:space-between; align-items:center;
+    padding:14px 20px; border-bottom:1px solid var(--border);
+    background:rgba(0,0,0,0.2);
+  }
+  .method-badge {
+    font-family:'JetBrains Mono',monospace; font-size:0.75rem; padding:3px 10px;
+    border-radius:4px; font-weight:700;
+  }
+  .method-post { background:rgba(127,255,127,0.15); color:var(--accent3); border:1px solid rgba(127,255,127,0.2); }
+  .method-get  { background:rgba(0,212,255,0.15); color:var(--accent); border:1px solid rgba(0,212,255,0.2); }
+  .api-endpoint { font-family:'JetBrains Mono',monospace; font-size:0.8rem; color:var(--text); }
+  pre {
+    font-family:'JetBrains Mono',monospace; font-size:0.78rem;
+    padding:20px; line-height:1.7; overflow-x:auto;
+    color:var(--text);
+  }
+  .json-key { color:var(--accent); }
+  .json-str { color:var(--accent3); }
+  .json-num { color:var(--accent2); }
+  .json-bool { color:var(--medium); }
+
+  /* ── STATS ── */
+  .stats-section { padding:80px 60px; }
+  .stats-grid {
+    display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr));
+    gap:2px; max-width:1000px; margin:0 auto;
+    border:1px solid var(--border); border-radius:16px; overflow:hidden;
+  }
+  .stat-box {
+    padding:40px 32px; background:var(--card);
+    border-right:1px solid var(--border); border-bottom:1px solid var(--border);
+    text-align:center; transition:background 0.3s;
+  }
+  .stat-box:hover { background:rgba(0,212,255,0.05); }
+  .stat-num { font-size:3rem; font-weight:800; color:var(--accent); line-height:1; }
+  .stat-label { font-size:0.85rem; color:var(--muted); margin-top:8px; }
+
+  /* ── CTA FOOTER ── */
+  .cta-section {
+    padding:160px 60px;
+    text-align:center;
+    background:radial-gradient(ellipse at center, rgba(0,212,255,0.08) 0%, transparent 70%);
+  }
+  .cta-section h2 { font-size:clamp(2.5rem,5vw,5rem); font-weight:800; letter-spacing:-0.03em; margin-bottom:24px; }
+  .cta-section h2 span { color:var(--accent); }
+  .cta-section p { color:var(--muted); font-size:1.1rem; max-width:500px; margin:0 auto 48px; }
+
+  footer {
+    border-top:1px solid var(--border);
+    padding:40px 60px;
+    display:flex; justify-content:space-between; align-items:center;
+    position:relative; z-index:1;
+  }
+  footer .logo { font-size:1.1rem; }
+  footer p { font-family:'JetBrains Mono',monospace; font-size:0.75rem; color:var(--muted); }
+
+  /* ── CURL SECTION ── */
+  .curl-section { padding:120px 60px; }
+  .curl-inner { max-width:1200px; margin:0 auto; }
+  .curl-tabs {
+    display:flex; gap:0; flex-wrap:wrap;
+    border:1px solid var(--border); border-radius:10px 10px 0 0; overflow:hidden;
+    margin-bottom:0;
+  }
+  .curl-tab {
+    padding:12px 20px; font-family:'JetBrains Mono',monospace; font-size:0.78rem;
+    background:rgba(0,0,0,0.3); color:var(--muted); cursor:pointer;
+    border-right:1px solid var(--border); transition:all 0.2s;
+    border:none; font-weight:600;
+  }
+  .curl-tab:hover { color:var(--text); background:rgba(0,212,255,0.05); }
+  .curl-tab.active { background:var(--card); color:var(--accent); }
+  .curl-panel {
+    display:none; background:var(--card);
+    border:1px solid var(--border); border-top:none;
+    border-radius:0 0 10px 10px; overflow:hidden;
+  }
+  .curl-panel.active { display:block; }
+  .curl-panel-header {
+    display:flex; align-items:center; justify-content:space-between;
+    padding:12px 20px; border-bottom:1px solid var(--border);
+    background:rgba(0,0,0,0.2);
+  }
+  .curl-panel-title { font-size:0.8rem; color:var(--muted); font-family:'JetBrains Mono',monospace; }
+  .copy-btn {
+    font-family:'JetBrains Mono',monospace; font-size:0.7rem; padding:4px 12px;
+    background:rgba(0,212,255,0.1); border:1px solid rgba(0,212,255,0.2);
+    border-radius:4px; color:var(--accent); cursor:pointer; transition:all 0.2s;
+  }
+  .copy-btn:hover { background:rgba(0,212,255,0.2); }
+  .copy-btn.copied { color:var(--accent3); border-color:rgba(127,255,127,0.3); background:rgba(127,255,127,0.1); }
+  .curl-code {
+    font-family:'JetBrains Mono',monospace; font-size:0.8rem; line-height:1.8;
+    padding:24px; overflow-x:auto; white-space:pre; color:var(--text);
+  }
+  .c-cmd { color:var(--accent); }
+  .c-flag { color:var(--medium); }
+  .c-url  { color:var(--accent3); }
+  .c-str  { color:var(--accent2); }
+  .c-cmt  { color:var(--muted); }
+  .c-ok   { color:var(--low); }
+  .c-err  { color:var(--critical); }
+
+  /* ── DISCORD FULL FLOW ── */
+  .discord-section { padding:120px 60px; background:rgba(88,101,242,0.03); }
+  .discord-inner { max-width:1200px; margin:0 auto; }
+  .discord-grid { display:grid; grid-template-columns:1.2fr 1fr; gap:60px; align-items:start; margin-top:60px; }
+
+  .full-flow {
+    position:relative;
+  }
+  .flow-node {
+    display:flex; gap:20px; margin-bottom:0; position:relative;
+  }
+  .flow-line {
+    display:flex; flex-direction:column; align-items:center;
+    flex-shrink:0;
+  }
+  .flow-circle {
+    width:44px; height:44px; border-radius:50%; flex-shrink:0;
+    display:flex; align-items:center; justify-content:center;
+    font-size:1.1rem; border:2px solid var(--border);
+    background:var(--card); z-index:1;
+  }
+  .flow-vline {
+    width:2px; flex:1; min-height:40px;
+    background:linear-gradient(to bottom, var(--border), transparent);
+    margin:4px 0;
+  }
+  .flow-node:last-child .flow-vline { display:none; }
+  .flow-body { padding-bottom:36px; flex:1; }
+  .flow-body h3 { font-size:1rem; font-weight:700; margin-bottom:6px; }
+  .flow-body p  { color:var(--muted); font-size:0.85rem; line-height:1.6; }
+  .flow-body .flow-tag {
+    display:inline-block; margin-top:10px; margin-right:6px;
+    font-family:'JetBrains Mono',monospace; font-size:0.7rem; padding:3px 10px;
+    background:rgba(0,212,255,0.08); border:1px solid rgba(0,212,255,0.15); border-radius:4px; color:var(--accent);
+  }
+  .flow-body .flow-tag.tag-orange { background:rgba(255,107,53,0.08); border-color:rgba(255,107,53,0.2); color:var(--accent2); }
+  .flow-body .flow-tag.tag-green  { background:rgba(127,255,127,0.08); border-color:rgba(127,255,127,0.2); color:var(--low); }
+  .flow-body .flow-tag.tag-red    { background:rgba(255,60,60,0.08);   border-color:rgba(255,60,60,0.2);   color:var(--critical); }
+  .flow-body .flow-tag.tag-purple { background:rgba(88,101,242,0.1);   border-color:rgba(88,101,242,0.3);  color:#a5b4fc; }
+
+  /* Discord embed mock */
+  .discord-embed {
+    background:#36393f; border-radius:8px; overflow:hidden;
+    font-family:'JetBrains Mono',monospace; font-size:0.78rem;
+    box-shadow:0 8px 32px rgba(0,0,0,0.5);
+  }
+  .dc-header {
+    padding:14px 16px; border-bottom:1px solid rgba(255,255,255,0.06);
+    display:flex; align-items:center; gap:10px;
+    background:#2f3136;
+  }
+  .dc-avatar { width:32px; height:32px; border-radius:50%; background:#5865f2; display:flex; align-items:center; justify-content:center; font-size:1rem; flex-shrink:0; }
+  .dc-bot-name { color:#fff; font-weight:700; font-size:0.82rem; }
+  .dc-bot-tag  { color:#5865f2; font-size:0.7rem; margin-left:4px; }
+  .dc-body { padding:16px; }
+  .dc-embed-wrap {
+    border-left:4px solid var(--critical);
+    background:rgba(0,0,0,0.2);
+    border-radius:0 6px 6px 0;
+    padding:14px;
+  }
+  .dc-embed-wrap.high  { border-left-color:var(--high); }
+  .dc-embed-wrap.ok    { border-left-color:var(--low); }
+  .dc-title { color:#fff; font-weight:700; margin-bottom:12px; font-size:0.85rem; }
+  .dc-fields { display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; margin-bottom:12px; }
+  .dc-field-label { color:#8e9297; font-size:0.68rem; text-transform:uppercase; margin-bottom:2px; }
+  .dc-field-value { color:#fff; font-size:0.78rem; font-weight:600; }
+  .dc-section { margin-top:10px; }
+  .dc-section-label { color:#8e9297; font-size:0.68rem; text-transform:uppercase; margin-bottom:6px; }
+  .dc-section-text  { color:#dcddde; font-size:0.78rem; line-height:1.5; }
+  .dc-ticket { background:rgba(255,255,255,0.04); border-radius:4px; padding:8px 10px; margin-bottom:6px; }
+  .dc-ticket-sev { display:inline-block; font-size:0.68rem; padding:1px 6px; border-radius:3px; margin-right:6px; font-weight:700; }
+  .dc-sev-critical { background:rgba(255,60,60,0.3); color:#ff6b6b; }
+  .dc-sev-high     { background:rgba(255,107,53,0.3); color:#ffb347; }
+  .dc-footer { color:#72767d; font-size:0.68rem; margin-top:10px; }
+
+  /* ── SCROLL ANIMATIONS ── */
+  .reveal {
+    opacity:0; transform:translateY(30px);
+    transition:opacity 0.7s ease, transform 0.7s ease;
+  }
+  .reveal.visible { opacity:1; transform:translateY(0); }
+
+  /* ── RESPONSIVE ── */
+  @media(max-width:900px) {
+    nav { padding:16px 24px; }
+    nav ul { display:none; }
+    .hero { padding:100px 24px 60px; }
+    .architecture, .features, .scanners, .ai-section, .webhook-section, .api-section, .stats-section, .cta-section, .curl-section, .discord-section { padding:80px 24px; }
+    .ai-inner, .api-inner, .discord-grid { grid-template-columns:1fr; gap:40px; }
+    footer { flex-direction:column; gap:12px; text-align:center; }
+    .dc-fields { grid-template-columns:1fr 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<div class="grid-bg"></div>
+
+<!-- NAV -->
+<nav>
+  <div class="logo">Mob<span>Sec</span>Ops</div>
+  <ul>
+    <li><a href="#architecture">Architecture</a></li>
+    <li><a href="#scanners">Scanners</a></li>
+    <li><a href="#discord-flow">Discord</a></li>
+    <li><a href="#curl">Tester</a></li>
+    <li><a href="#curl" class="nav-cta">curl →</a></li>
+  </ul>
+</nav>
+
+<!-- HERO -->
+<section class="hero">
+  <div class="hero-orb orb1"></div>
+  <div class="hero-orb orb2"></div>
+
+  <div class="badge">
+    <span class="badge-dot"></span>
+    Pipeline CI/CD de sécurité mobile — v2.0
+  </div>
+
+  <h1>
+    <span class="strike">Pousser</span>
+    <em>Sécuriser</em>
+    d'abord.
+  </h1>
+
+  <p class="hero-sub">
+    <strong>MobSecOps</strong> intercepte chaque push GitHub, analyse votre APK Android avec
+    <strong>9 scanners parallèles</strong>, génère un rapport IA et bloque automatiquement
+    les releases dangereuses — avant qu'elles n'atteignent la production.
+  </p>
+
+  <div class="hero-ctas">
+    <a href="#architecture" class="btn-primary">Voir l'architecture →</a>
+    <a href="#api" class="btn-outline">Documentation API</a>
+  </div>
+
+  <!-- Terminal -->
+  <div class="terminal-wrap">
+    <div class="terminal">
+      <div class="term-header">
+        <span class="term-dot r"></span>
+        <span class="term-dot y"></span>
+        <span class="term-dot g"></span>
+        <span class="term-title">controller — pipeline run</span>
+      </div>
+      <div class="term-body" id="terminal-body"></div>
+    </div>
+  </div>
+</section>
+
+<!-- STATS -->
+<section class="stats-section reveal">
+  <div class="stats-grid">
+    <div class="stat-box"><div class="stat-num">9</div><div class="stat-label">Scanners parallèles</div></div>
+    <div class="stat-box"><div class="stat-num">8</div><div class="stat-label">Services microservices</div></div>
+    <div class="stat-box"><div class="stat-num">< 90s</div><div class="stat-label">Analyse complète</div></div>
+    <div class="stat-box"><div class="stat-num">100</div><div class="stat-label">Score de sécurité /100</div></div>
+  </div>
+</section>
+
+<!-- ARCHITECTURE -->
+<section class="architecture reveal" id="architecture">
+  <div class="arch-header">
+    <div class="section-label">// Architecture</div>
+    <h2 class="section-title">Pipeline entièrement automatisé</h2>
+    <p class="section-sub">Un webhook GitHub déclenche l'ensemble de la chaîne — clonage, build, 9 scans parallèles, rapport IA, notification Discord.</p>
+  </div>
+
+  <div class="pipeline-flow">
+    <div class="pipe-node trigger">
+      <div class="node-icon">⚡</div>
+      <div class="node-name">GitHub Push</div>
+      <div class="node-port">webhook</div>
+    </div>
+    <div class="pipe-arrow">→</div>
+    <div class="pipe-node">
+      <div class="node-icon">🎛️</div>
+      <div class="node-name">Controller</div>
+      <div class="node-port">:8000</div>
+    </div>
+    <div class="pipe-arrow">→</div>
+    <div class="pipe-node">
+      <div class="node-icon">⚙️</div>
+      <div class="node-name">Pipeline</div>
+      <div class="node-port">async</div>
+    </div>
+    <div class="pipe-arrow">→</div>
+    <div class="pipe-node">
+      <div class="node-icon">🔬</div>
+      <div class="node-name">9 Scanners</div>
+      <div class="node-port">parallèle</div>
+    </div>
+    <div class="pipe-arrow">→</div>
+    <div class="pipe-node ai-node">
+      <div class="node-icon">🧠</div>
+      <div class="node-name">IA Groq</div>
+      <div class="node-port">llama-3.1</div>
+    </div>
+    <div class="pipe-arrow">→</div>
+    <div class="pipe-node final">
+      <div class="node-icon">🚀</div>
+      <div class="node-name">Discord</div>
+      <div class="node-port">rapport</div>
+    </div>
+  </div>
+
+  <div class="services-grid">
+    <div class="svc-card">
+      <div class="svc-name">🎛️ Controller</div>
+      <div class="svc-port">:8000</div>
+      <div class="svc-desc">Point d'entrée unique. Vérifie les signatures HMAC, orchestre le pipeline.</div>
+    </div>
+    <div class="svc-card">
+      <div class="svc-name">🛡️ MobSF</div>
+      <div class="svc-port">:8001</div>
+      <div class="svc-desc">Analyse statique complète de l'APK — permissions, code, composants.</div>
+      <span class="svc-badge badge-apk">APK</span>
+    </div>
+    <div class="svc-card">
+      <div class="svc-name">🔑 Gitleaks</div>
+      <div class="svc-port">:8002</div>
+      <div class="svc-desc">Détection de secrets hardcodés dans le code source du repo.</div>
+      <span class="svc-badge badge-repo">REPO</span>
+    </div>
+    <div class="svc-card">
+      <div class="svc-name">🔍 Androguard</div>
+      <div class="svc-port">:8004</div>
+      <div class="svc-desc">Analyse du bytecode DEX — APIs dangereuses, strings suspectes.</div>
+      <span class="svc-badge badge-apk">APK</span>
+    </div>
+    <div class="svc-card">
+      <div class="svc-name">🌐 Network</div>
+      <div class="svc-port">:8005</div>
+      <div class="svc-desc">Extraction et analyse des URLs, domaines, IPs embarqués dans l'APK.</div>
+      <span class="svc-badge badge-apk">APK</span>
+    </div>
+    <div class="svc-card">
+      <div class="svc-name">🔒 Permissions</div>
+      <div class="svc-port">:8006</div>
+      <div class="svc-desc">Audit des permissions Android — dangereuses, inutiles, excessives.</div>
+      <span class="svc-badge badge-apk">APK</span>
+    </div>
+    <div class="svc-card">
+      <div class="svc-name">🎭 Obfuscation</div>
+      <div class="svc-port">:8007</div>
+      <div class="svc-desc">Détection de l'obfuscation du code et des techniques d'anti-analyse.</div>
+      <span class="svc-badge badge-apk">APK</span>
+    </div>
+    <div class="svc-card">
+      <div class="svc-name">🔐 SSL</div>
+      <div class="svc-port">:8008</div>
+      <div class="svc-desc">Audit des certificats, certificate pinning, configuration TLS.</div>
+      <span class="svc-badge badge-apk">APK</span>
+    </div>
+    <div class="svc-card">
+      <div class="svc-name">🦠 VirusTotal</div>
+      <div class="svc-port">:8009</div>
+      <div class="svc-desc">Soumission de l'APK à VirusTotal, agrégation des résultats antivirus.</div>
+      <span class="svc-badge badge-apk">APK</span>
+    </div>
+    <div class="svc-card">
+      <div class="svc-name">📦 Syft/Grype</div>
+      <div class="svc-port">:8010</div>
+      <div class="svc-desc">SBOM complet + audit des CVEs sur toutes les dépendances.</div>
+      <span class="svc-badge badge-apk">APK</span>
+    </div>
+    <div class="svc-card">
+      <div class="svc-name">📊 Aggregator</div>
+      <div class="svc-port">:8011</div>
+      <div class="svc-desc">Collecte tous les résultats, génère le rapport HTML + IA Ollama.</div>
+    </div>
+  </div>
+</section>
+
+<!-- FEATURES -->
+<section class="features reveal" id="features">
+  <div class="features-header">
+    <div class="section-label">// Fonctionnalités</div>
+    <h2 class="section-title">Tout ce qu'il faut<br />pour auditer sans effort.</h2>
+  </div>
+
+  <div class="features-grid">
+    <div class="feat-card">
+      <span class="feat-icon">⚡</span>
+      <h3 class="feat-title">Déclenchement automatique</h3>
+      <p class="feat-desc">Chaque <code style="color:var(--accent)">git push</code> déclenche automatiquement le pipeline via webhook GitHub avec vérification de signature HMAC SHA-256.</p>
+      <div class="feat-tags">
+        <span class="tag">GitHub Webhook</span>
+        <span class="tag">HMAC-SHA256</span>
+        <span class="tag">Auto-clone</span>
+      </div>
+    </div>
+
+    <div class="feat-card">
+      <span class="feat-icon">🔄</span>
+      <h3 class="feat-title">9 scans en parallèle</h3>
+      <p class="feat-desc">Tous les scanners s'exécutent simultanément via <code style="color:var(--accent)">asyncio.gather()</code>, réduisant le temps d'analyse total à moins de 90 secondes.</p>
+      <div class="feat-tags">
+        <span class="tag">asyncio</span>
+        <span class="tag">FastAPI</span>
+        <span class="tag">Docker</span>
+      </div>
+    </div>
+
+    <div class="feat-card">
+      <span class="feat-icon">🧠</span>
+      <h3 class="feat-title">Analyse IA (Groq + Ollama)</h3>
+      <p class="feat-desc">Les résultats agrégés sont analysés par <strong>llama-3.1</strong> via Groq API. L'IA génère un niveau de risque, des tickets structurés et une recommandation de push.</p>
+      <div class="feat-tags">
+        <span class="tag">Groq API</span>
+        <span class="tag">llama-3.1</span>
+        <span class="tag">Ollama</span>
+      </div>
+    </div>
+
+    <div class="feat-card">
+      <span class="feat-icon">🚫</span>
+      <h3 class="feat-title">Blocage automatique</h3>
+      <p class="feat-desc">Si le niveau de risque est <em style="color:var(--critical)">critical</em> ou <em style="color:var(--high)">high</em>, le push est automatiquement marqué comme bloqué et l'équipe est notifiée instantanément.</p>
+      <div class="feat-tags">
+        <span class="tag">Risk scoring</span>
+        <span class="tag">Auto-block</span>
+      </div>
+    </div>
+
+    <div class="feat-card">
+      <span class="feat-icon">💬</span>
+      <h3 class="feat-title">Notifications Discord riches</h3>
+      <p class="feat-desc">Un embed Discord complet avec score de sécurité, niveau de risque coloré, top 5 tickets et release notes générées par l'IA.</p>
+      <div class="feat-tags">
+        <span class="tag">Discord Webhook</span>
+        <span class="tag">Embeds</span>
+        <span class="tag">Release notes</span>
+      </div>
+    </div>
+
+    <div class="feat-card">
+      <span class="feat-icon">📊</span>
+      <h3 class="feat-title">Score de sécurité unifié</h3>
+      <p class="feat-desc">Chaque scanner produit un score /100. L'agrégateur calcule un score global en temps réel, mis à jour dynamiquement pendant l'exécution du pipeline.</p>
+      <div class="feat-tags">
+        <span class="tag">Score /100</span>
+        <span class="tag">Real-time</span>
+        <span class="tag">Historique</span>
+      </div>
+    </div>
+
+    <div class="feat-card">
+      <span class="feat-icon">📦</span>
+      <h3 class="feat-title">SBOM + CVE Analysis</h3>
+      <p class="feat-desc">Syft génère un Software Bill of Materials complet de l'APK. Grype audite ensuite toutes les dépendances pour identifier les CVEs connues.</p>
+      <div class="feat-tags">
+        <span class="tag">SBOM</span>
+        <span class="tag">Syft</span>
+        <span class="tag">Grype</span>
+        <span class="tag">CVE</span>
+      </div>
+    </div>
+
+    <div class="feat-card">
+      <span class="feat-icon">🏗️</span>
+      <h3 class="feat-title">Infrastructure Docker</h3>
+      <p class="feat-desc">Chaque service tourne dans son propre container Docker. Un réseau <code style="color:var(--accent)">pipeline_net</code> commun assure la communication. Init.sh configure les volumes partagés.</p>
+      <div class="feat-tags">
+        <span class="tag">Docker Compose</span>
+        <span class="tag">pipeline_net</span>
+        <span class="tag">Volumes</span>
+      </div>
+    </div>
+
+    <div class="feat-card">
+      <span class="feat-icon">🔑</span>
+      <h3 class="feat-title">Admin protégé par API Key</h3>
+      <p class="feat-desc">Routes <code style="color:var(--accent)">/admin/status</code> et <code style="color:var(--accent)">/admin/pipelines</code> protégées par clé API. Historique des 20 derniers pipelines disponible.</p>
+      <div class="feat-tags">
+        <span class="tag">Auth</span>
+        <span class="tag">Pipeline history</span>
+        <span class="tag">Health checks</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- SCANNERS DETAIL -->
+<section class="scanners reveal" id="scanners">
+  <div class="scanners-header">
+    <div class="section-label">// Les 9 Scanners</div>
+    <h2 class="section-title">Couverture maximale,<br/>surface d'attaque minimale.</h2>
+    <p class="section-sub" style="margin:0 auto">Chaque scanner expose la même interface <code style="color:var(--accent)">POST /scan</code> et retourne un format unifié avec findings, summary et score.</p>
+  </div>
+
+  <div class="scanner-grid">
+    <div class="scanner-card sc-mobsf">
+      <div class="sc-header">
+        <span class="sc-icon">🛡️</span>
+        <div><div class="sc-name">MobSF</div><div class="sc-port-tag">:8001 — APK</div></div>
+      </div>
+      <p class="sc-desc">Analyse statique approfondie de l'APK Android. Inspecte le manifest, le code Java/Kotlin, les permissions et génère un rapport de sécurité complet.</p>
+      <div class="sc-detects">
+        <span>Manifest</span><span>Permissions</span><span>Crypto</span><span>Network</span><span>Score /100</span>
+      </div>
+    </div>
+
+    <div class="scanner-card sc-gitleaks">
+      <div class="sc-header">
+        <span class="sc-icon">🔑</span>
+        <div><div class="sc-name">Gitleaks</div><div class="sc-port-tag">:8002 — REPO</div></div>
+      </div>
+      <p class="sc-desc">Scan du repo Git à la recherche de secrets hardcodés — API keys, tokens, credentials exposés dans le code ou l'historique des commits.</p>
+      <div class="sc-detects">
+        <span>AWS Keys</span><span>GitHub PAT</span><span>GCP Keys</span><span>Passwords</span><span>Stripe</span>
+      </div>
+    </div>
+
+    <div class="scanner-card sc-androguard">
+      <div class="sc-header">
+        <span class="sc-icon">🔍</span>
+        <div><div class="sc-name">Androguard</div><div class="sc-port-tag">:8004 — APK</div></div>
+      </div>
+      <p class="sc-desc">Analyse du bytecode DEX directement. Détecte les appels à des APIs dangereuses, les strings suspectes et les bibliothèques natives embarquées.</p>
+      <div class="sc-detects">
+        <span>Runtime.exec</span><span>SMS</span><span>Reflection</span><span>DexClassLoader</span><span>Root</span>
+      </div>
+    </div>
+
+    <div class="scanner-card sc-network">
+      <div class="sc-header">
+        <span class="sc-icon">🌐</span>
+        <div><div class="sc-name">Network</div><div class="sc-port-tag">:8005 — APK</div></div>
+      </div>
+      <p class="sc-desc">Extrait et analyse toutes les URLs, domaines et adresses IP présents dans l'APK. Évalue leur réputation et détecte les endpoints suspects.</p>
+      <div class="sc-detects">
+        <span>URLs</span><span>Domaines</span><span>IPs</span><span>HTTP hardcodé</span><span>Onion</span>
+      </div>
+    </div>
+
+    <div class="scanner-card sc-permissions">
+      <div class="sc-header">
+        <span class="sc-icon">🔒</span>
+        <div><div class="sc-name">Permissions</div><div class="sc-port-tag">:8006 — APK</div></div>
+      </div>
+      <p class="sc-desc">Audit complet des permissions déclarées dans le manifest Android. Classifie chaque permission par niveau de risque et détecte les abus.</p>
+      <div class="sc-detects">
+        <span>CAMERA</span><span>LOCATION</span><span>CONTACTS</span><span>STORAGE</span><span>ADMIN</span>
+      </div>
+    </div>
+
+    <div class="scanner-card sc-obfuscation">
+      <div class="sc-header">
+        <span class="sc-icon">🎭</span>
+        <div><div class="sc-name">Obfuscation</div><div class="sc-port-tag">:8007 — APK</div></div>
+      </div>
+      <p class="sc-desc">Mesure le niveau d'obfuscation du code. Un score trop faible expose la logique métier ; un score anormalement élevé peut indiquer du code malveillant caché.</p>
+      <div class="sc-detects">
+        <span>Score 0-100</span><span>Proguard</span><span>R8</span><span>Anti-debug</span>
+      </div>
+    </div>
+
+    <div class="scanner-card sc-ssl">
+      <div class="sc-header">
+        <span class="sc-icon">🔐</span>
+        <div><div class="sc-name">SSL/TLS</div><div class="sc-port-tag">:8008 — APK</div></div>
+      </div>
+      <p class="sc-desc">Vérifie la configuration SSL : certificate pinning, vérification des certificats, configurations TLS faibles, et mauvaises pratiques de sécurité réseau.</p>
+      <div class="sc-detects">
+        <span>Pinning</span><span>TLS 1.0/1.1</span><span>AllowAll</span><span>Cert validation</span>
+      </div>
+    </div>
+
+    <div class="scanner-card sc-virustotal">
+      <div class="sc-header">
+        <span class="sc-icon">🦠</span>
+        <div><div class="sc-name">VirusTotal</div><div class="sc-port-tag">:8009 — APK</div></div>
+      </div>
+      <p class="sc-desc">Soumet le hash de l'APK à l'API VirusTotal et agrège les résultats de +70 moteurs antivirus pour détecter les malwares connus.</p>
+      <div class="sc-detects">
+        <span>70+ AV</span><span>Hash lookup</span><span>Malware</span><span>Reputaton</span>
+      </div>
+    </div>
+
+    <div class="scanner-card sc-syft">
+      <div class="sc-header">
+        <span class="sc-icon">📦</span>
+        <div><div class="sc-name">Syft / Grype</div><div class="sc-port-tag">:8010 — APK</div></div>
+      </div>
+      <p class="sc-desc">Génère un SBOM complet de l'APK via Syft, puis Grype audite chaque package contre la base CVE. Identifie les dépendances vulnérables avec fix version.</p>
+      <div class="sc-detects">
+        <span>SBOM</span><span>CVE</span><span>CVSS</span><span>Fix version</span><span>okhttp</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- AI REPORT SECTION -->
+<section class="ai-section reveal" id="ai">
+  <div class="ai-inner">
+    <div>
+      <div class="section-label">// Intelligence Artificielle</div>
+      <h2 class="section-title">Rapports générés par IA</h2>
+      <p class="section-sub">L'IA analyse les résultats de tous les scanners et génère automatiquement un rapport actionnable — tickets de remédiation, release notes et recommandation de déploiement.</p>
+
+      <div style="margin-top:40px">
+        <div class="severity-row">
+          <div class="sev-dot" style="background:var(--critical)"></div>
+          <div class="sev-name" style="color:var(--critical)">CRITICAL</div>
+          <div class="sev-score">Push automatiquement bloqué — intervention immédiate requise</div>
+        </div>
+        <div class="severity-row">
+          <div class="sev-dot" style="background:var(--high)"></div>
+          <div class="sev-name" style="color:var(--high)">HIGH</div>
+          <div class="sev-score">Push bloqué — correction avant déploiement</div>
+        </div>
+        <div class="severity-row">
+          <div class="sev-dot" style="background:var(--medium)"></div>
+          <div class="sev-name" style="color:var(--medium)">MEDIUM</div>
+          <div class="sev-score">Push autorisé — tickets créés, correction planifiée</div>
+        </div>
+        <div class="severity-row" style="border:none">
+          <div class="sev-dot" style="background:var(--low)"></div>
+          <div class="sev-name" style="color:var(--low)">LOW</div>
+          <div class="sev-score">Push autorisé — amélioration recommandée</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Mock AI Report -->
+    <div class="ai-demo">
+      <div class="ai-demo-header">
+        <span class="ai-demo-title">🧠 Rapport IA — myapp@a3f9bc12</span>
+        <span class="risk-badge risk-high">HIGH</span>
+      </div>
+      <div class="ai-demo-body">
+        <p class="ai-summary">L'APK présente 3 vulnérabilités haute sévérité : un token AWS hardcodé dans Config.java, l'utilisation de Runtime.exec() sans validation d'input, et okhttp 3.12.0 affecté par CVE-2023-3655 (CVSS 8.1). Le score moyen de sécurité est 61/100.</p>
+
+        <div class="ticket-item">
+          <div class="ticket-header">
+            <span class="ticket-sev" style="background:rgba(255,60,60,0.2);color:var(--critical);border:1px solid rgba(255,60,60,0.3)">CRITICAL</span>
+            <span class="ticket-title-text">Token AWS exposé dans Config.java</span>
+            <span class="ticket-effort">effort: low</span>
+          </div>
+          <p class="ticket-rem">Supprimer le token du code source, utiliser des variables d'environnement ou AWS Secrets Manager. Révoquer le token actuel immédiatement.</p>
+        </div>
+
+        <div class="ticket-item">
+          <div class="ticket-header">
+            <span class="ticket-sev" style="background:rgba(255,107,53,0.2);color:var(--high);border:1px solid rgba(255,107,53,0.3)">HIGH</span>
+            <span class="ticket-title-text">okhttp 3.12.0 — CVE-2023-3655</span>
+            <span class="ticket-effort">effort: low</span>
+          </div>
+          <p class="ticket-rem">Mettre à jour vers okhttp ≥ 4.9.3. CVSS 8.1 — risque d'interception de trafic HTTPS.</p>
+        </div>
+
+        <div class="push-banner push-blocked">
+          <span>🚫</span>
+          <span>Push BLOQUÉ — Niveau de risque HIGH. Corriger les findings critiques avant déploiement.</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- WEBHOOK FLOW -->
+<section class="webhook-section reveal" id="webhook">
+  <div class="webhook-inner">
+    <div class="section-label">// Intégration CI/CD</div>
+    <h2 class="section-title">Intégration en 3 étapes</h2>
+
+    <div class="flow-steps">
+      <div class="flow-step">
+        <div class="step-num">01</div>
+        <div class="step-content">
+          <h3>Configurer le webhook GitHub</h3>
+          <p>Dans les settings de votre repo, ajoutez le webhook pointant vers le controller. La signature HMAC est vérifiée automatiquement à chaque event.</p>
+          <div class="step-code">POST https://votre-controller:8000/webhook/github
+X-Hub-Signature-256: sha256=&lt;hmac&gt;
+X-GitHub-Event: push</div>
+        </div>
+      </div>
+
+      <div class="flow-step">
+        <div class="step-num">02</div>
+        <div class="step-content">
+          <h3>Démarrer l'infrastructure Docker</h3>
+          <p>Un seul script initialise les volumes partagés, le réseau Docker et démarre tous les services en parallèle.</p>
+          <div class="step-code">./init.sh          # Crée apk_storage, repos_storage, pipeline_net
+docker-compose up  # Démarre les 11 services</div>
+        </div>
+      </div>
+
+      <div class="flow-step">
+        <div class="step-num">03</div>
+        <div class="step-content">
+          <h3>Pousser — tout le reste est automatique</h3>
+          <p>À chaque <code style="color:var(--accent)">git push</code>, le pipeline se déclenche, analyse l'APK, génère le rapport IA et notifie Discord en moins de 90 secondes.</p>
+          <div class="step-code">git push origin main
+# → Webhook reçu
+# → Repo cloné, APK détecté  
+# → 9 scans parallèles lancés
+# → Rapport IA généré (Groq llama-3.1)
+# → Notification Discord envoyée
+# → Push: ✅ AUTORISÉ | 🚫 BLOQUÉ</div>
+        </div>
+      </div>
+    </div>
+
+    <div style="margin-top:20px">
+      <p style="color:var(--muted);font-size:0.9rem;margin-bottom:12px">Trigger manuel disponible pour les tests :</p>
+      <div class="step-code">POST /trigger/manual
+{"repo": "myapp", "branch": "main", "commit": "abc123", "apk_filename": "myapp.apk"}</div>
+    </div>
+  </div>
+</section>
+
+<!-- API SECTION -->
+<section class="api-section reveal" id="api">
+  <div class="api-inner">
+    <div>
+      <div class="section-label">// Contrat API</div>
+      <h2 class="section-title">Interface unifiée</h2>
+      <p class="section-sub">Tous les scanners partagent le même endpoint <code style="color:var(--accent)">POST /scan</code> et le même format de réponse. L'orchestrateur n'a qu'à changer l'URL.</p>
+
+      <div style="margin-top:40px;display:flex;flex-direction:column;gap:12px">
+        <div style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:16px 20px">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+            <span class="method-badge method-post">POST</span>
+            <code style="font-family:JetBrains Mono,monospace;font-size:0.82rem;color:var(--text)">/scan</code>
+          </div>
+          <p style="color:var(--muted);font-size:0.82rem">Lancer un scan — même endpoint pour tous les services</p>
+        </div>
+        <div style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:16px 20px">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+            <span class="method-badge method-get">GET</span>
+            <code style="font-family:JetBrains Mono,monospace;font-size:0.82rem;color:var(--text)">/health</code>
+          </div>
+          <p style="color:var(--muted);font-size:0.82rem">Healthcheck — retourne <code style="color:var(--accent3)">{"status":"ok"}</code></p>
+        </div>
+        <div style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:16px 20px">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+            <span class="method-badge method-get">GET</span>
+            <code style="font-family:JetBrains Mono,monospace;font-size:0.82rem;color:var(--text)">/admin/pipelines</code>
+          </div>
+          <p style="color:var(--muted);font-size:0.82rem">Historique des 20 derniers pipelines (auth requis)</p>
+        </div>
+        <div style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:16px 20px">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+            <span class="method-badge method-get">GET</span>
+            <code style="font-family:JetBrains Mono,monospace;font-size:0.82rem;color:var(--text)">/admin/status</code>
+          </div>
+          <p style="color:var(--muted);font-size:0.82rem">État de tous les services internes (auth requis)</p>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <div class="api-code">
+        <div class="api-code-header">
+          <span class="method-badge method-post">POST</span>
+          <span class="api-endpoint">/scan — Réponse unifiée</span>
+        </div>
+        <pre>{
+  <span class="json-key">"service"</span>: <span class="json-str">"mobsf"</span>,
+  <span class="json-key">"status"</span>: <span class="json-str">"success"</span>,
+  <span class="json-key">"apk_filename"</span>: <span class="json-str">"myapp_main_abc123.apk"</span>,
+  <span class="json-key">"findings"</span>: [
+    {
+      <span class="json-key">"rule_id"</span>: <span class="json-str">"aws-access-token"</span>,
+      <span class="json-key">"severity"</span>: <span class="json-str">"critical"</span>,
+      <span class="json-key">"file"</span>: <span class="json-str">"Config.java"</span>,
+      <span class="json-key">"line"</span>: <span class="json-num">42</span>
+    }
+  ],
+  <span class="json-key">"summary"</span>: {
+    <span class="json-key">"critical"</span>: <span class="json-num">1</span>,
+    <span class="json-key">"high"</span>: <span class="json-num">3</span>,
+    <span class="json-key">"medium"</span>: <span class="json-num">8</span>,
+    <span class="json-key">"low"</span>: <span class="json-num">2</span>,
+    <span class="json-key">"score"</span>: <span class="json-num">61</span>
+  },
+  <span class="json-key">"duration_seconds"</span>: <span class="json-num">45.2</span>,
+  <span class="json-key">"message"</span>: <span class="json-str">"Scan terminé en 45.2s — score 61/100"</span>
+}</pre>
+      </div>
+
+      <div class="api-code" style="margin-top:16px">
+        <div class="api-code-header">
+          <span class="method-badge method-post">POST</span>
+          <span class="api-endpoint">/scan — Rapport IA final</span>
+        </div>
+        <pre>{
+  <span class="json-key">"risk_level"</span>: <span class="json-str">"high"</span>,
+  <span class="json-key">"summary"</span>: <span class="json-str">"3 phrases de synthèse..."</span>,
+  <span class="json-key">"tickets"</span>: [{
+    <span class="json-key">"title"</span>: <span class="json-str">"Token AWS exposé"</span>,
+    <span class="json-key">"severity"</span>: <span class="json-str">"critical"</span>,
+    <span class="json-key">"remediation"</span>: <span class="json-str">"Utiliser AWS Secrets Manager"</span>,
+    <span class="json-key">"effort"</span>: <span class="json-str">"low"</span>
+  }],
+  <span class="json-key">"release_notes"</span>: <span class="json-str">"Corrige X, améliore Y..."</span>,
+  <span class="json-key">"push_recommendation"</span>: <span class="json-bool">false</span>
+}</pre>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- DISCORD FULL FLOW -->
+<section class="discord-section reveal" id="discord-flow">
+  <div class="discord-inner">
+    <div class="section-label">// Flow complet — de git push à Discord</div>
+    <h2 class="section-title">Chaque push, un rapport.<br/>Zéro intervention manuelle.</h2>
+    <p class="section-sub">Voici exactement ce qui se passe entre un <code style="color:var(--accent)">git push</code> et la notification Discord — chaque étape, chaque service, chaque décision.</p>
+
+    <div class="discord-grid">
+      <!-- FLOW STEPS -->
+      <div class="full-flow">
+
+        <div class="flow-node">
+          <div class="flow-line">
+            <div class="flow-circle" style="border-color:rgba(0,212,255,0.5)">⚡</div>
+            <div class="flow-vline"></div>
+          </div>
+          <div class="flow-body">
+            <h3>1. git push origin main</h3>
+            <p>Le développeur pousse sur GitHub. GitHub émet immédiatement un événement <code style="color:var(--accent)">push</code> vers le webhook configuré.</p>
+            <span class="flow-tag">X-GitHub-Event: push</span>
+            <span class="flow-tag">X-Hub-Signature-256: sha256=…</span>
+          </div>
+        </div>
+
+        <div class="flow-node">
+          <div class="flow-line">
+            <div class="flow-circle" style="border-color:rgba(0,212,255,0.4)">🎛️</div>
+            <div class="flow-vline"></div>
+          </div>
+          <div class="flow-body">
+            <h3>2. Controller reçoit le webhook</h3>
+            <p>Le Controller (<code style="color:var(--accent)">:8010</code>) vérifie la signature HMAC-SHA256 avec le secret partagé. Si invalide → <strong style="color:var(--critical)">401 rejeté</strong>. Si valide → accepté en <code style="color:var(--accent3)">202 Accepted</code> immédiatement.</p>
+            <span class="flow-tag">POST /webhook/github</span>
+            <span class="flow-tag tag-green">HMAC vérifié</span>
+          </div>
+        </div>
+
+        <div class="flow-node">
+          <div class="flow-line">
+            <div class="flow-circle" style="border-color:rgba(255,215,0,0.4)">📁</div>
+            <div class="flow-vline"></div>
+          </div>
+          <div class="flow-body">
+            <h3>3. Clone du repo + détection APK</h3>
+            <p>Le Controller clone le repo via <code style="color:var(--accent)">git clone --depth 1</code> dans <code style="color:var(--accent)">/repos_storage/</code>. Si un <code style="color:var(--accent)">.apk</code> est trouvé dans le repo, il est copié dans <code style="color:var(--accent)">/apk_storage/</code>.</p>
+            <span class="flow-tag">/repos_storage/myapp</span>
+            <span class="flow-tag tag-orange">/apk_storage/myapp_abc123.apk</span>
+          </div>
+        </div>
+
+        <div class="flow-node">
+          <div class="flow-line">
+            <div class="flow-circle" style="border-color:rgba(0,212,255,0.5)">⚙️</div>
+            <div class="flow-vline"></div>
+          </div>
+          <div class="flow-body">
+            <h3>4. Pipeline lancé en background</h3>
+            <p>La fonction <code style="color:var(--accent)">run_pipeline()</code> s'exécute en tâche de fond (<code style="color:var(--accent)">BackgroundTask</code>). Le Controller répond immédiatement au webhook GitHub sans attendre les scans.</p>
+            <span class="flow-tag">asyncio BackgroundTask</span>
+            <span class="flow-tag tag-green">{"status":"accepted"}</span>
+          </div>
+        </div>
+
+        <div class="flow-node">
+          <div class="flow-line">
+            <div class="flow-circle" style="border-color:rgba(127,255,127,0.5)">🔬</div>
+            <div class="flow-vline"></div>
+          </div>
+          <div class="flow-body">
+            <h3>5. 9 scanners en parallèle via asyncio.gather()</h3>
+            <p>Tous les scanners APK et repo sont lancés simultanément. Chaque résultat est mis à jour en temps réel dans <code style="color:var(--accent)">pipeline_history</code> dès qu'il arrive — le statut passe de <em style="color:var(--medium)">running</em> à partiel.</p>
+            <span class="flow-tag">mobsf :8001</span>
+            <span class="flow-tag">gitleaks :8002</span>
+            <span class="flow-tag">syft :8003</span>
+            <span class="flow-tag">androguard :8004</span>
+            <span class="flow-tag">virustotal :8005</span>
+            <span class="flow-tag">permissions :8006</span>
+            <span class="flow-tag">network :8007</span>
+            <span class="flow-tag">obfuscation :8008</span>
+            <span class="flow-tag">ssl :8009</span>
+          </div>
+        </div>
+
+        <div class="flow-node">
+          <div class="flow-line">
+            <div class="flow-circle" style="border-color:rgba(127,255,127,0.5)">🧠</div>
+            <div class="flow-vline"></div>
+          </div>
+          <div class="flow-body">
+            <h3>6. Analyse IA via Groq (llama-3.1-8b)</h3>
+            <p>Les résultats agrégés (top 5 findings par scanner) sont envoyés à l'API Groq. L'IA génère en JSON : niveau de risque global, résumé en 3 phrases, tickets de remédiation avec effort, release notes, et recommandation de push.</p>
+            <span class="flow-tag tag-green">Groq API — llama-3.1-8b-instant</span>
+            <span class="flow-tag">risk_level · tickets · push_recommendation</span>
+          </div>
+        </div>
+
+        <div class="flow-node">
+          <div class="flow-line">
+            <div class="flow-circle" style="border-color:rgba(255,60,60,0.5)">🚫</div>
+            <div class="flow-vline"></div>
+          </div>
+          <div class="flow-body">
+            <h3>7. Décision automatique de push</h3>
+            <p>Si le niveau de risque est <strong style="color:var(--critical)">critical</strong> ou <strong style="color:var(--high)">high</strong>, <code style="color:var(--accent)">push_allowed = False</code> est forcé, indépendamment de la recommandation IA. Statut final du pipeline : <code style="color:var(--critical)">blocked</code> ou <code style="color:var(--low)">success</code>.</p>
+            <span class="flow-tag tag-red">critical/high → push_allowed: false</span>
+            <span class="flow-tag tag-green">medium/low → push autorisé</span>
+          </div>
+        </div>
+
+        <div class="flow-node">
+          <div class="flow-line">
+            <div class="flow-circle" style="border-color:rgba(88,101,242,0.7)">💬</div>
+            <div class="flow-vline"></div>
+          </div>
+          <div class="flow-body">
+            <h3>8. Notification Discord envoyée</h3>
+            <p>Un embed riche est posté sur le webhook Discord configuré : couleur selon le risque, score moyen, top 5 tickets, résumé IA et release notes. L'équipe est notifiée instantanément.</p>
+            <span class="flow-tag tag-purple">Discord Webhook</span>
+            <span class="flow-tag tag-red">🚫 BLOQUÉ</span>
+            <span class="flow-tag tag-green">✅ AUTORISÉ</span>
+          </div>
+        </div>
+
+        <div class="flow-node">
+          <div class="flow-line">
+            <div class="flow-circle" style="border-color:rgba(255,215,0,0.4)">📊</div>
+            <div class="flow-vline" style="display:none"></div>
+          </div>
+          <div class="flow-body">
+            <h3>9. Historique disponible via Admin API</h3>
+            <p>Le pipeline finalisé est stocké dans <code style="color:var(--accent)">pipeline_history</code> (100 max en mémoire). Consultable à tout moment via <code style="color:var(--accent)">GET /admin/pipelines</code> avec la clé admin.</p>
+            <span class="flow-tag">GET /admin/pipelines</span>
+            <span class="flow-tag">X-API-Key: &lt;admin_key&gt;</span>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- DISCORD EMBED MOCK -->
+      <div>
+        <p style="font-size:0.8rem;color:var(--muted);margin-bottom:16px;font-family:'JetBrains Mono',monospace;">// Aperçu notification Discord</p>
+        <div class="discord-embed">
+          <div class="dc-header">
+            <div class="dc-avatar">🤖</div>
+            <div>
+              <span class="dc-bot-name">MobSecOps</span>
+              <span class="dc-bot-tag">APP</span>
+            </div>
+          </div>
+          <div class="dc-body">
+            <div class="dc-embed-wrap high">
+              <div class="dc-title">🚫 MobSecOps — myapp@a3f9bc12</div>
+              <div class="dc-fields">
+                <div>
+                  <div class="dc-field-label">Risque global</div>
+                  <div class="dc-field-value" style="color:#ffb347">HIGH</div>
+                </div>
+                <div>
+                  <div class="dc-field-label">Score</div>
+                  <div class="dc-field-value">61/100</div>
+                </div>
+                <div>
+                  <div class="dc-field-label">Push autorisé</div>
+                  <div class="dc-field-value" style="color:#ff6b6b">Non</div>
+                </div>
+              </div>
+              <div class="dc-section">
+                <div class="dc-section-label">Résumé IA</div>
+                <div class="dc-section-text">L'APK présente un token AWS hardcodé (critique), okhttp 3.12.0 vulnérable CVE-2023-3655 (CVSS 8.1), et 3 appels Runtime.exec() non validés. Score global : 61/100.</div>
+              </div>
+              <div class="dc-section">
+                <div class="dc-section-label">Tickets (top 5)</div>
+                <div class="dc-ticket">
+                  <span class="dc-ticket-sev dc-sev-critical">CRITICAL</span>
+                  Token AWS hardcodé dans Config.java
+                </div>
+                <div class="dc-ticket">
+                  <span class="dc-ticket-sev dc-sev-high">HIGH</span>
+                  okhttp 3.12.0 — CVE-2023-3655 (CVSS 8.1)
+                </div>
+                <div class="dc-ticket">
+                  <span class="dc-ticket-sev dc-sev-high">HIGH</span>
+                  Runtime.exec() sans validation d'input
+                </div>
+              </div>
+              <div class="dc-section">
+                <div class="dc-section-label">Release Notes</div>
+                <div class="dc-section-text">Correction urgente requise : supprimer le token AWS, mettre à jour okhttp vers ≥ 4.9.3, valider les inputs avant exec().</div>
+              </div>
+              <div class="dc-footer">MobSecOps Pipeline · 2026-05-23T14:32:11Z · durée: 52.4s</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Second embed - OK example -->
+        <p style="font-size:0.8rem;color:var(--muted);margin:24px 0 16px;font-family:'JetBrains Mono',monospace;">// Exemple push autorisé</p>
+        <div class="discord-embed">
+          <div class="dc-body" style="padding-top:12px">
+            <div class="dc-embed-wrap ok">
+              <div class="dc-title">✅ MobSecOps — myapp@d8e2fa01</div>
+              <div class="dc-fields">
+                <div>
+                  <div class="dc-field-label">Risque global</div>
+                  <div class="dc-field-value" style="color:#7fff7f">LOW</div>
+                </div>
+                <div>
+                  <div class="dc-field-label">Score</div>
+                  <div class="dc-field-value">88/100</div>
+                </div>
+                <div>
+                  <div class="dc-field-label">Push autorisé</div>
+                  <div class="dc-field-value" style="color:#7fff7f">Oui ✓</div>
+                </div>
+              </div>
+              <div class="dc-footer">MobSecOps Pipeline · 2026-05-23T15:01:44Z · durée: 48.1s</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- CURL SECTION -->
+<section class="curl-section reveal" id="curl">
+  <div class="curl-inner">
+    <div class="section-label">// Tester avec curl</div>
+    <h2 class="section-title">Commandes curl prêtes<br/>à copier-coller.</h2>
+    <p class="section-sub" style="margin-bottom:48px">Testez chaque service individuellement ou lancez la suite de tests complète. Tous les services exposent <code style="color:var(--accent)">GET /health</code> et <code style="color:var(--accent)">POST /scan</code>.</p>
+
+    <div class="curl-tabs" id="curlTabs">
+      <button class="curl-tab active" data-panel="health">Health checks</button>
+      <button class="curl-tab" data-panel="mobsf">MobSF</button>
+      <button class="curl-tab" data-panel="gitleaks">Gitleaks</button>
+      <button class="curl-tab" data-panel="androguard">Androguard</button>
+      <button class="curl-tab" data-panel="permissions">Permissions</button>
+      <button class="curl-tab" data-panel="network">Network</button>
+      <button class="curl-tab" data-panel="obfuscation">Obfuscation</button>
+      <button class="curl-tab" data-panel="ssl">SSL</button>
+      <button class="curl-tab" data-panel="virustotal">VirusTotal</button>
+      <button class="curl-tab" data-panel="syft">Syft/Grype</button>
+      <button class="curl-tab" data-panel="webhook">Webhook</button>
+      <button class="curl-tab" data-panel="admin">Admin</button>
+      <button class="curl-tab" data-panel="full" style="color:var(--accent2);font-weight:800">🧪 Test complet</button>
+    </div>
+
+    <!-- HEALTH CHECKS -->
+    <div class="curl-panel active" id="panel-health">
+      <div class="curl-panel-header">
+        <span class="curl-panel-title">GET /health — Vérifier que tous les services sont UP</span>
+        <button class="copy-btn" onclick="copyPanel('panel-health')">Copier</button>
+      </div>
+      <div class="curl-code"><span class="c-cmt"># Health check — tous les services en une fois</span>
+<span class="c-cmt">for</span> service in controller:8010 mobsf:8001 gitleaks:8002 syft:8003 androguard:8004 \
+              virustotal:8005 permissions:8006 network:8007 obfuscation:8008 ssl:8009 aggregator:8011; do
+  echo -n "$service → "
+  <span class="c-cmd">curl</span> <span class="c-flag">-s</span> <span class="c-flag">-o</span> /dev/null <span class="c-flag">-w</span> <span class="c-str">"%{http_code}"</span> http://localhost:${service##*:}/health
+  echo ""
+done
+
+<span class="c-cmt"># Ou service par service :</span>
+<span class="c-cmd">curl</span> <span class="c-flag">-s</span> http://localhost:8010/health  <span class="c-cmt"># controller</span>
+<span class="c-cmd">curl</span> <span class="c-flag">-s</span> http://localhost:8001/health  <span class="c-cmt"># mobsf</span>
+<span class="c-cmd">curl</span> <span class="c-flag">-s</span> http://localhost:8002/health  <span class="c-cmt"># gitleaks</span>
+<span class="c-cmd">curl</span> <span class="c-flag">-s</span> http://localhost:8003/health  <span class="c-cmt"># syft/grype</span>
+<span class="c-cmd">curl</span> <span class="c-flag">-s</span> http://localhost:8004/health  <span class="c-cmt"># androguard</span>
+<span class="c-cmd">curl</span> <span class="c-flag">-s</span> http://localhost:8005/health  <span class="c-cmt"># virustotal</span>
+<span class="c-cmd">curl</span> <span class="c-flag">-s</span> http://localhost:8006/health  <span class="c-cmt"># permissions</span>
+<span class="c-cmd">curl</span> <span class="c-flag">-s</span> http://localhost:8007/health  <span class="c-cmt"># network</span>
+<span class="c-cmd">curl</span> <span class="c-flag">-s</span> http://localhost:8008/health  <span class="c-cmt"># obfuscation</span>
+<span class="c-cmd">curl</span> <span class="c-flag">-s</span> http://localhost:8009/health  <span class="c-cmt"># ssl</span>
+<span class="c-cmd">curl</span> <span class="c-flag">-s</span> http://localhost:8011/health  <span class="c-cmt"># aggregator</span>
+
+<span class="c-cmt"># Réponse attendue pour chaque :</span>
+<span class="c-ok">{"status":"ok","service":"mobsf","port":8001}</span></div>
+    </div>
+
+    <!-- MOBSF -->
+    <div class="curl-panel" id="panel-mobsf">
+      <div class="curl-panel-header">
+        <span class="curl-panel-title">POST /scan — MobSF :8001 — Analyse statique APK</span>
+        <button class="copy-btn" onclick="copyPanel('panel-mobsf')">Copier</button>
+      </div>
+      <div class="curl-code"><span class="c-cmt"># Health check</span>
+<span class="c-cmd">curl</span> <span class="c-flag">-s</span> http://localhost:8001/health | python3 -m json.tool
+
+<span class="c-cmt"># Scan MobSF — analyse statique complète de l'APK</span>
+<span class="c-cmd">curl</span> <span class="c-flag">-s</span> <span class="c-flag">--max-time</span> 120 \
+  <span class="c-flag">-X</span> POST http://localhost:8001/scan \
+  <span class="c-flag">-H</span> <span class="c-str">"Content-Type: application/json"</span> \
+  <span class="c-flag">-d</span> <span class="c-str">'{
+    "apk_filename": "allsafe.apk",
+    "repo":         "myapp",
+    "branch":       "main",
+    "commit":       "abc123"
+  }'</span> | python3 -m json.tool
+
+<span class="c-cmt"># Extraire uniquement le score</span>
+<span class="c-cmd">curl</span> <span class="c-flag">-s</span> <span class="c-flag">--max-time</span> 120 \
+  <span class="c-flag">-X</span> POST http://localhost:8001/scan \
+  <span class="c-flag">-H</span> <span class="c-str">"Content-Type: application/json"</span> \
+  <span class="c-flag">-d</span> <span class="c-str">'{"apk_filename":"allsafe.apk","repo":"myapp","branch":"main","commit":"abc123"}'</span> \
+  | python3 <span class="c-flag">-c</span> <span class="c-str">"import json,sys; d=json.load(sys.stdin); print(f\"Score: {d['summary']['score']}/100\")"</span>
+
+<span class="c-cmt"># Réponse attendue :</span>
+<span class="c-ok">{
+  "service": "mobsf", "status": "success",
+  "summary": {"critical": 2, "high": 5, "medium": 8, "low": 3, "score": 72},
+  "duration_seconds": 45.2
+}</span></div>
+    </div>
+
+    <!-- GITLEAKS -->
+    <div class="curl-panel" id="panel-gitleaks">
+      <div class="curl-panel-header">
+        <span class="curl-panel-title">POST /scan — Gitleaks :8002 — Détection de secrets</span>
+        <button class="copy-btn" onclick="copyPanel('panel-gitleaks')">Copier</button>
+      </div>
+      <div class="curl-code"><span class="c-cmt"># Health check</span>
+<span class="c-cmd">curl</span> <span class="c-flag">-s</span> http://localhost:8002/health | python3 -m json.tool
+
+<span class="c-cmt"># Scan Gitleaks — le repo doit exister dans /repos_storage/</span>
+<span class="c-cmt"># (automatiquement cloné par le controller lors d'un webhook)</span>
+<span class="c-cmd">curl</span> <span class="c-flag">-s</span> <span class="c-flag">--max-time</span> 30 \
+  <span class="c-flag">-X</span> POST http://localhost:8002/scan \
+  <span class="c-flag">-H</span> <span class="c-str">"Content-Type: application/json"</span> \
+  <span class="c-flag">-d</span> <span class="c-str">'{
+    "repo_path": "/repos_storage/myapp",
+    "repo":      "myapp",
+    "branch":    "main",
+    "commit":    "abc123"
+  }'</span> | python3 -m json.tool
+
+<span class="c-cmt"># Voir uniquement les secrets détectés</span>
+<span class="c-cmd">curl</span> <span class="c-flag">-s</span> <span class="c-flag">--max-time</span> 30 \
+  <span class="c-flag">-X</span> POST http://localhost:8002/scan \
+  <span class="c-flag">-H</span> <span class="c-str">"Content-Type: application/json"</span> \
+  <span class="c-flag">-d</span> <span class="c-str">'{"repo_path":"/repos_storage/myapp","repo":"myapp","branch":"main","commit":"abc123"}'</span> \
+  | python3 <span class="c-flag">-c</span> <span class="c-str">"import json,sys; d=json.load(sys.stdin); [print(f['rule_id'], f['severity'], f['file']) for f in d['findings']]"</span>
+
+<span class="c-cmt"># Réponse attendue :</span>
+<span class="c-ok">{
+  "service": "gitleaks", "status": "success",
+  "findings": [{"rule_id":"aws-access-token","severity":"critical","file":"Config.java","line":42}],
+  "summary": {"critical": 1, "high": 0, "score": 50}
+}</span></div>
+    </div>
+
+    <!-- ANDROGUARD -->
+    <div class="curl-panel" id="panel-androguard">
+      <div class="curl-panel-header">
+        <span class="curl-panel-title">POST /scan — Androguard :8004 — Analyse bytecode DEX</span>
+        <button class="copy-btn" onclick="copyPanel('panel-androguard')">Copier</button>
+      </div>
+      <div class="curl-code"><span class="c-cmt"># Health check</span>
+<span class="c-cmd">curl</span> <span class="c-flag">-s</span> http://localhost:8004/health | python3 -m json.tool
+
+<span class="c-cmt"># Scan Androguard — APIs dangereuses, strings suspectes, DEX</span>
+<span class="c-cmd">curl</span> <span class="c-flag">-s</span> <span class="c-flag">--max-time</span> 30 \
+  <span class="c-flag">-X</span> POST http://localhost:8004/scan \
+  <span class="c-flag">-H</span> <span class="c-str">"Content-Type: application/json"</span> \
+  <span class="c-flag">-d</span> <span class="c-str">'{
+    "apk_filename": "allsafe.apk",
+    "repo":         "myapp",
+    "branch":       "main",
+    "commit":       "abc123"
+  }'</span> | python3 -m json.tool
+
+<span class="c-cmt"># Filtrer par sévérité</span>
+<span class="c-cmd">curl</span> <span class="c-flag">-s</span> <span class="c-flag">--max-time</span> 30 \
+  <span class="c-flag">-X</span> POST http://localhost:8004/scan \
+  <span class="c-flag">-H</span> <span class="c-str">"Content-Type: application/json"</span> \
+  <span class="c-flag">-d</span> <span class="c-str">'{"apk_filename":"allsafe.apk","repo":"myapp","branch":"main","commit":"abc123"}'</span> \
+  | python3 <span class="c-flag">-c</span> <span class="c-str">"import json,sys; d=json.load(sys.stdin); [print(f['severity'], f['type'], f.get('api','')) for f in d['findings'] if f['severity']=='critical']"</span>
+
+<span class="c-cmt"># Réponse attendue :</span>
+<span class="c-ok">{
+  "service": "androguard", "status": "success",
+  "findings": [{"type":"dangerous_api","severity":"critical","api":"Ljava/lang/Runtime;->exec("}],
+  "summary": {"critical": 2, "high": 4, "score": 68}
+}</span></div>
+    </div>
+
+    <!-- PERMISSIONS -->
+    <div class="curl-panel" id="panel-permissions">
+      <div class="curl-panel-header">
+        <span class="curl-panel-title">POST /scan — Permissions :8006 — Audit AndroidManifest</span>
+        <button class="copy-btn" onclick="copyPanel('panel-permissions')">Copier</button>
+      </div>
+      <div class="curl-code"><span class="c-cmt"># Health check</span>
+<span class="c-cmd">curl</span> <span class="c-flag">-s</span> http://localhost:8006/health | python3 -m json.tool
+
+<span class="c-cmt"># Scan Permissions — audit AndroidManifest.xml</span>
+<span class="c-cmd">curl</span> <span class="c-flag">-s</span> <span class="c-flag">--max-time</span> 30 \
+  <span class="c-flag">-X</span> POST http://localhost:8006/scan \
+  <span class="c-flag">-H</span> <span class="c-str">"Content-Type: application/json"</span> \
+  <span class="c-flag">-d</span> <span class="c-str">'{
+    "apk_filename": "allsafe.apk",
+    "repo":         "myapp",
+    "branch":       "main",
+    "commit":       "abc123"
+  }'</span> | python3 -m json.tool
+
+<span class="c-cmt"># Voir les permissions dangereuses uniquement</span>
+<span class="c-cmd">curl</span> <span class="c-flag">-s</span> <span class="c-flag">--max-time</span> 30 \
+  <span class="c-flag">-X</span> POST http://localhost:8006/scan \
+  <span class="c-flag">-H</span> <span class="c-str">"Content-Type: application/json"</span> \
+  <span class="c-flag">-d</span> <span class="c-str">'{"apk_filename":"allsafe.apk","repo":"myapp","branch":"main","commit":"abc123"}'</span> \
+  | python3 <span class="c-flag">-c</span> <span class="c-str">"import json,sys; d=json.load(sys.stdin); print(f\"Total: {d['permissions_total']}, Score: {d['summary']['score']}/100\")"</span>
+
+<span class="c-cmt"># Réponse attendue :</span>
+<span class="c-ok">{
+  "service": "permissions", "status": "success",
+  "permissions_total": 18,
+  "summary": {"critical": 3, "high": 5, "score": 65}
+}</span></div>
+    </div>
+
+    <!-- NETWORK -->
+    <div class="curl-panel" id="panel-network">
+      <div class="curl-panel-header">
+        <span class="curl-panel-title">POST /scan — Network :8007 — Extraction URLs/IPs/domaines</span>
+        <button class="copy-btn" onclick="copyPanel('panel-network')">Copier</button>
+      </div>
+      <div class="curl-code"><span class="c-cmt"># Health check</span>
+<span class="c-cmd">curl</span> <span class="c-flag">-s</span> http://localhost:8007/health | python3 -m json.tool
+
+<span class="c-cmt"># Scan Network — URLs, domaines, IPs dans le bytecode DEX</span>
+<span class="c-cmd">curl</span> <span class="c-flag">-s</span> <span class="c-flag">--max-time</span> 30 \
+  <span class="c-flag">-X</span> POST http://localhost:8007/scan \
+  <span class="c-flag">-H</span> <span class="c-str">"Content-Type: application/json"</span> \
+  <span class="c-flag">-d</span> <span class="c-str">'{
+    "apk_filename": "allsafe.apk",
+    "repo":         "myapp",
+    "branch":       "main",
+    "commit":       "abc123"
+  }'</span> | python3 -m json.tool
+
+<span class="c-cmt"># Voir les URLs extraites</span>
+<span class="c-cmd">curl</span> <span class="c-flag">-s</span> <span class="c-flag">--max-time</span> 30 \
+  <span class="c-flag">-X</span> POST http://localhost:8007/scan \
+  <span class="c-flag">-H</span> <span class="c-str">"Content-Type: application/json"</span> \
+  <span class="c-flag">-d</span> <span class="c-str">'{"apk_filename":"allsafe.apk","repo":"myapp","branch":"main","commit":"abc123"}'</span> \
+  | python3 <span class="c-flag">-c</span> <span class="c-str">"import json,sys; d=json.load(sys.stdin); print('URLs:', d['urls'][:5]); print('Domains:', d['domains'][:5])"</span>
+
+<span class="c-cmt"># Réponse attendue :</span>
+<span class="c-ok">{
+  "service": "network", "status": "success",
+  "urls": ["http://api.example.com/v1"], "domains": ["example.com"],
+  "domains_found": 12, "domains_scanned": 12,
+  "summary": {"medium": 3, "score": 80}
+}</span></div>
+    </div>
+
+    <!-- OBFUSCATION -->
+    <div class="curl-panel" id="panel-obfuscation">
+      <div class="curl-panel-header">
+        <span class="curl-panel-title">POST /scan — Obfuscation :8008 — Score d'obfuscation</span>
+        <button class="copy-btn" onclick="copyPanel('panel-obfuscation')">Copier</button>
+      </div>
+      <div class="curl-code"><span class="c-cmt"># Health check</span>
+<span class="c-cmd">curl</span> <span class="c-flag">-s</span> http://localhost:8008/health | python3 -m json.tool
+
+<span class="c-cmt"># Scan Obfuscation — détecte ProGuard/R8, anti-debug</span>
+<span class="c-cmd">curl</span> <span class="c-flag">-s</span> <span class="c-flag">--max-time</span> 30 \
+  <span class="c-flag">-X</span> POST http://localhost:8008/scan \
+  <span class="c-flag">-H</span> <span class="c-str">"Content-Type: application/json"</span> \
+  <span class="c-flag">-d</span> <span class="c-str">'{
+    "apk_filename": "allsafe.apk",
+    "repo":         "myapp",
+    "branch":       "main",
+    "commit":       "abc123"
+  }'</span> | python3 -m json.tool
+
+<span class="c-cmt"># Score d'obfuscation uniquement</span>
+<span class="c-cmd">curl</span> <span class="c-flag">-s</span> <span class="c-flag">--max-time</span> 30 \
+  <span class="c-flag">-X</span> POST http://localhost:8008/scan \
+  <span class="c-flag">-H</span> <span class="c-str">"Content-Type: application/json"</span> \
+  <span class="c-flag">-d</span> <span class="c-str">'{"apk_filename":"allsafe.apk","repo":"myapp","branch":"main","commit":"abc123"}'</span> \
+  | python3 <span class="c-flag">-c</span> <span class="c-str">"import json,sys; d=json.load(sys.stdin); print(f\"Obfuscation score: {d.get('obfuscation_score')}/100\")"</span></div>
+    </div>
+
+    <!-- SSL -->
+    <div class="curl-panel" id="panel-ssl">
+      <div class="curl-panel-header">
+        <span class="curl-panel-title">POST /scan — SSL :8009 — Audit certificats et TLS</span>
+        <button class="copy-btn" onclick="copyPanel('panel-ssl')">Copier</button>
+      </div>
+      <div class="curl-code"><span class="c-cmt"># Health check</span>
+<span class="c-cmd">curl</span> <span class="c-flag">-s</span> http://localhost:8009/health | python3 -m json.tool
+
+<span class="c-cmt"># Scan SSL — certificate pinning, TLS config, AllowAllHostnames</span>
+<span class="c-cmd">curl</span> <span class="c-flag">-s</span> <span class="c-flag">--max-time</span> 30 \
+  <span class="c-flag">-X</span> POST http://localhost:8009/scan \
+  <span class="c-flag">-H</span> <span class="c-str">"Content-Type: application/json"</span> \
+  <span class="c-flag">-d</span> <span class="c-str">'{
+    "apk_filename": "allsafe.apk",
+    "repo":         "myapp",
+    "branch":       "main",
+    "commit":       "abc123"
+  }'</span> | python3 -m json.tool
+
+<span class="c-cmt"># Réponse attendue :</span>
+<span class="c-ok">{
+  "service": "ssl", "status": "success",
+  "findings": [{"type":"no_certificate_pinning","severity":"medium"}],
+  "summary": {"medium": 2, "score": 75}
+}</span></div>
+    </div>
+
+    <!-- VIRUSTOTAL -->
+    <div class="curl-panel" id="panel-virustotal">
+      <div class="curl-panel-header">
+        <span class="curl-panel-title">POST /scan — VirusTotal :8005 — 70+ moteurs antivirus</span>
+        <button class="copy-btn" onclick="copyPanel('panel-virustotal')">Copier</button>
+      </div>
+      <div class="curl-code"><span class="c-cmt"># Health check</span>
+<span class="c-cmd">curl</span> <span class="c-flag">-s</span> http://localhost:8005/health | python3 -m json.tool
+
+<span class="c-cmt"># Scan VirusTotal — soumet le hash APK à l'API VT</span>
+<span class="c-cmt"># Nécessite VIRUSTOTAL_API_KEY dans l'env du service</span>
+<span class="c-cmd">curl</span> <span class="c-flag">-s</span> <span class="c-flag">--max-time</span> 60 \
+  <span class="c-flag">-X</span> POST http://localhost:8005/scan \
+  <span class="c-flag">-H</span> <span class="c-str">"Content-Type: application/json"</span> \
+  <span class="c-flag">-d</span> <span class="c-str">'{
+    "apk_filename": "allsafe.apk",
+    "repo":         "myapp",
+    "branch":       "main",
+    "commit":       "abc123"
+  }'</span> | python3 -m json.tool
+
+<span class="c-cmt"># Voir le résultat de réputation</span>
+<span class="c-cmd">curl</span> <span class="c-flag">-s</span> <span class="c-flag">--max-time</span> 60 \
+  <span class="c-flag">-X</span> POST http://localhost:8005/scan \
+  <span class="c-flag">-H</span> <span class="c-str">"Content-Type: application/json"</span> \
+  <span class="c-flag">-d</span> <span class="c-str">'{"apk_filename":"allsafe.apk","repo":"myapp","branch":"main","commit":"abc123"}'</span> \
+  | python3 <span class="c-flag">-c</span> <span class="c-str">"import json,sys; d=json.load(sys.stdin); s=d['summary']; print(f\"Malicious: {s.get('malicious',0)} / {s.get('total',0)} engines\")"</span></div>
+    </div>
+
+    <!-- SYFT -->
+    <div class="curl-panel" id="panel-syft">
+      <div class="curl-panel-header">
+        <span class="curl-panel-title">POST /scan — Syft/Grype :8003 — SBOM + CVE analysis</span>
+        <button class="copy-btn" onclick="copyPanel('panel-syft')">Copier</button>
+      </div>
+      <div class="curl-code"><span class="c-cmt"># Health check</span>
+<span class="c-cmd">curl</span> <span class="c-flag">-s</span> http://localhost:8003/health | python3 -m json.tool
+
+<span class="c-cmt"># Scan Syft+Grype — SBOM complet + CVEs sur dépendances</span>
+<span class="c-cmd">curl</span> <span class="c-flag">-s</span> <span class="c-flag">--max-time</span> 120 \
+  <span class="c-flag">-X</span> POST http://localhost:8003/scan \
+  <span class="c-flag">-H</span> <span class="c-str">"Content-Type: application/json"</span> \
+  <span class="c-flag">-d</span> <span class="c-str">'{
+    "apk_filename": "allsafe.apk",
+    "repo":         "myapp",
+    "branch":       "main",
+    "commit":       "abc123"
+  }'</span> | python3 -m json.tool
+
+<span class="c-cmt"># Lister les CVEs high/critical uniquement</span>
+<span class="c-cmd">curl</span> <span class="c-flag">-s</span> <span class="c-flag">--max-time</span> 120 \
+  <span class="c-flag">-X</span> POST http://localhost:8003/scan \
+  <span class="c-flag">-H</span> <span class="c-str">"Content-Type: application/json"</span> \
+  <span class="c-flag">-d</span> <span class="c-str">'{"apk_filename":"allsafe.apk","repo":"myapp","branch":"main","commit":"abc123"}'</span> \
+  | python3 <span class="c-flag">-c</span> <span class="c-str">"import json,sys; d=json.load(sys.stdin); [print(f['cve_id'], f['severity'], f['package'], f['version']) for f in d.get('findings',[]) if f['severity'] in ('high','critical')]"</span>
+
+<span class="c-cmt"># Réponse attendue :</span>
+<span class="c-ok">{
+  "service": "syft_grype", "status": "success",
+  "sbom": {"packages_count": 87},
+  "findings": [{"cve_id":"CVE-2023-12345","severity":"high","cvss":8.1,"package":"okhttp","version":"3.12.0","fix_version":"4.9.3"}],
+  "summary": {"high": 3, "score": 55}
+}</span></div>
+    </div>
+
+    <!-- WEBHOOK -->
+    <div class="curl-panel" id="panel-webhook">
+      <div class="curl-panel-header">
+        <span class="curl-panel-title">POST /webhook/github + /trigger/manual — Déclencher le pipeline</span>
+        <button class="copy-btn" onclick="copyPanel('panel-webhook')">Copier</button>
+      </div>
+      <div class="curl-code"><span class="c-cmt"># ── Trigger MANUEL (sans GitHub) — idéal pour les tests ──</span>
+<span class="c-cmd">curl</span> <span class="c-flag">-s</span> <span class="c-flag">-X</span> POST http://localhost:8010/trigger/manual \
+  <span class="c-flag">-H</span> <span class="c-str">"Content-Type: application/json"</span> \
+  <span class="c-flag">-d</span> <span class="c-str">'{
+    "repo":         "myapp",
+    "branch":       "main",
+    "commit":       "abc12345",
+    "apk_filename": "allsafe.apk",
+    "services":     ["androguard", "permissions", "network", "obfuscation", "ssl"]
+  }'</span>
+
+<span class="c-cmt"># Trigger avec TOUS les services</span>
+<span class="c-cmd">curl</span> <span class="c-flag">-s</span> <span class="c-flag">-X</span> POST http://localhost:8010/trigger/manual \
+  <span class="c-flag">-H</span> <span class="c-str">"Content-Type: application/json"</span> \
+  <span class="c-flag">-d</span> <span class="c-str">'{"repo":"myapp","branch":"main","commit":"abc12345","apk_filename":"allsafe.apk"}'</span>
+
+<span class="c-cmt"># ── Webhook GitHub SIMULÉ avec signature HMAC ──</span>
+BODY='{"repository":{"name":"myapp","clone_url":"https://github.com/user/myapp"},"ref":"refs/heads/main","after":"abc12345"}'
+SIG="sha256=$(echo -n "$BODY" | openssl dgst -sha256 -hmac 'change_me' | cut -d' ' -f2)"
+
+<span class="c-cmd">curl</span> <span class="c-flag">-s</span> <span class="c-flag">-X</span> POST http://localhost:8010/webhook/github \
+  <span class="c-flag">-H</span> <span class="c-str">"Content-Type: application/json"</span> \
+  <span class="c-flag">-H</span> <span class="c-str">"X-GitHub-Event: push"</span> \
+  <span class="c-flag">-H</span> <span class="c-str">"X-Hub-Signature-256: $SIG"</span> \
+  <span class="c-flag">-d</span> "$BODY"
+
+<span class="c-cmt"># Réponse attendue :</span>
+<span class="c-ok">{"status":"accepted","repo":"myapp","commit":"abc12345"}</span></div>
+    </div>
+
+    <!-- ADMIN -->
+    <div class="curl-panel" id="panel-admin">
+      <div class="curl-panel-header">
+        <span class="curl-panel-title">GET /admin/* — Monitoring et historique (clé API requise)</span>
+        <button class="copy-btn" onclick="copyPanel('panel-admin')">Copier</button>
+      </div>
+      <div class="curl-code"><span class="c-cmt"># ── État de tous les services internes ──</span>
+<span class="c-cmd">curl</span> <span class="c-flag">-s</span> http://localhost:8010/admin/status \
+  <span class="c-flag">-H</span> <span class="c-str">"X-API-Key: une_cle_admin_forte"</span> \
+  | python3 -m json.tool
+
+<span class="c-cmt"># ── 20 derniers pipelines exécutés ──</span>
+<span class="c-cmd">curl</span> <span class="c-flag">-s</span> http://localhost:8010/admin/pipelines \
+  <span class="c-flag">-H</span> <span class="c-str">"X-API-Key: une_cle_admin_forte"</span> \
+  | python3 -m json.tool
+
+<span class="c-cmt"># ── Voir seulement le dernier pipeline ──</span>
+<span class="c-cmd">curl</span> <span class="c-flag">-s</span> http://localhost:8010/admin/pipelines \
+  <span class="c-flag">-H</span> <span class="c-str">"X-API-Key: une_cle_admin_forte"</span> \
+  | python3 <span class="c-flag">-c</span> <span class="c-str">"import json,sys; d=json.load(sys.stdin); p=d['pipelines'][-1]; print(f\"repo:{p['repo']} commit:{p['commit'][:8]} status:{p['status']}\")"</span>
+
+<span class="c-cmt"># ── Vérifier push_allowed sur le dernier pipeline ──</span>
+<span class="c-cmd">curl</span> <span class="c-flag">-s</span> http://localhost:8010/admin/pipelines \
+  <span class="c-flag">-H</span> <span class="c-str">"X-API-Key: une_cle_admin_forte"</span> \
+  | python3 <span class="c-flag">-c</span> <span class="c-str">"import json,sys; d=json.load(sys.stdin); p=d['pipelines'][-1]; ai=p.get('ai_report',{}); print(f\"Risk: {ai.get('risk_level')} | Push: {'✅' if p.get('push_allowed') else '🚫'}\")"</span>
+
+<span class="c-cmt"># Réponse attendue /admin/status :</span>
+<span class="c-ok">{
+  "mobsf": {"status":"ok","code":200},
+  "gitleaks": {"status":"ok","code":200},
+  ...
+}</span></div>
+    </div>
+
+    <!-- FULL TEST SUITE -->
+    <div class="curl-panel" id="panel-full">
+      <div class="curl-panel-header">
+        <span class="curl-panel-title">bash test.sh — Suite de tests complète (tous les services)</span>
+        <button class="copy-btn" onclick="copyPanel('panel-full')">Copier</button>
+      </div>
+      <div class="curl-code"><span class="c-cmt">#!/bin/bash</span>
+<span class="c-cmt"># ════════════════════════════════════════════════════════</span>
+<span class="c-cmt">#  MobSecOps — Suite de tests complète</span>
+<span class="c-cmt">#  Usage: bash test.sh</span>
+<span class="c-cmt">#  Prérequis: allsafe.apk dans /apk_storage/</span>
+<span class="c-cmt"># ════════════════════════════════════════════════════════</span>
+
+APK="allsafe.apk"
+REPO="allsafe"
+BRANCH="main"
+COMMIT="abc123test"
+PASS=0; FAIL=0
+
+ok()   { echo "  ✅ PASS — $1"; ((PASS++)); }
+fail() { echo "  ❌ FAIL — $1"; ((FAIL++)); }
+warn() { echo "  ⚠️  SKIP — $1"; }
+
+echo "╔══════════════════════════════════════╗"
+echo "║  MobSecOps — Suite de tests          ║"
+echo "╚══════════════════════════════════════╝"
+
+<span class="c-cmt"># ── 1. Health checks ──────────────────────────────────</span>
+echo "▶ Health checks"
+for port in 8010 8001 8002 8003 8004 8005 8006 8007 8008 8009 8011; do
+  status=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 http://localhost:$port/health)
+  [ "$status" == "200" ] && ok ":$port" || fail ":$port → HTTP $status"
+done
+
+<span class="c-cmt"># ── 2. Scans APK individuels ──────────────────────────</span>
+PAYLOAD="{\"apk_filename\":\"$APK\",\"repo\":\"$REPO\",\"branch\":\"$BRANCH\",\"commit\":\"$COMMIT\"}"
+
+for service in "androguard:8004" "permissions:8006" "network:8007" "obfuscation:8008" "ssl:8009"; do
+  name="${service%%:*}"; port="${service##*:}"
+  echo "▶ Scan $name (:$port)"
+  result=$(curl -s --max-time 30 -X POST http://localhost:$port/scan \
+    -H "Content-Type: application/json" -d "$PAYLOAD")
+  score=$(echo "$result" | python3 -c "import json,sys; print(json.load(sys.stdin)['summary']['score'])" 2>/dev/null)
+  [ -n "$score" ] && ok "Score: $score/100" || fail "Réponse invalide: ${result:0:80}"
+done
+
+<span class="c-cmt"># ── 3. Scan MobSF (plus long ~45-90s) ────────────────</span>
+echo "▶ Scan MobSF (:8001)"
+result=$(curl -s --max-time 120 -X POST http://localhost:8001/scan \
+  -H "Content-Type: application/json" -d "$PAYLOAD")
+status=$(echo "$result" | python3 -c "import json,sys; print(json.load(sys.stdin).get('status','?'))" 2>/dev/null)
+score=$(echo "$result" | python3 -c "import json,sys; print(json.load(sys.stdin).get('summary',{}).get('score','?'))" 2>/dev/null)
+[ "$status" == "success" ] && ok "Score: $score/100" || fail "${result:0:100}"
+
+<span class="c-cmt"># ── 4. Scan Syft/Grype (SBOM + CVE) ──────────────────</span>
+echo "▶ Scan Syft/Grype (:8003)"
+result=$(curl -s --max-time 120 -X POST http://localhost:8003/scan \
+  -H "Content-Type: application/json" -d "$PAYLOAD")
+score=$(echo "$result" | python3 -c "import json,sys; print(json.load(sys.stdin)['summary']['score'])" 2>/dev/null)
+[ -n "$score" ] && ok "Score: $score/100" || fail "${result:0:100}"
+
+<span class="c-cmt"># ── 5. Pipeline complet via trigger/manual ────────────</span>
+echo "▶ Pipeline complet (controller :8010)"
+COMMIT_ID="test_$(date +%s)"
+curl -s --max-time 5 -X POST http://localhost:8010/trigger/manual \
+  -H "Content-Type: application/json" \
+  -d "{\"repo\":\"$REPO\",\"branch\":\"$BRANCH\",\"commit\":\"$COMMIT_ID\",\"apk_filename\":\"$APK\",\"services\":[\"androguard\",\"permissions\",\"network\"]}" > /dev/null
+sleep 25
+pipe_status=$(curl -s http://localhost:8010/admin/pipelines -H "X-API-Key: une_cle_admin_forte" \
+  | python3 -c "import json,sys; pipes=[p for p in json.load(sys.stdin).get('pipelines',[]) if '$COMMIT_ID' in str(p.get('commit',''))]; print(pipes[-1]['status'] if pipes else 'not_found')" 2>/dev/null)
+[[ "$pipe_status" == "success" || "$pipe_status" == "blocked" ]] && ok "Pipeline: $pipe_status" || fail "Pipeline: $pipe_status"
+
+<span class="c-cmt"># ── Résumé ────────────────────────────────────────────</span>
+echo ""
+echo "══════════════════════════════════════"
+echo "  ✅ $PASS OK  /  ❌ $FAIL FAIL"
+[ "$FAIL" -eq 0 ] && echo "  🎉 Tous les tests passés !" || echo "  ⚠️  $FAIL test(s) échoué(s)"
+echo "══════════════════════════════════════"</div>
+    </div>
+
+  </div>
+</section>
+
+<!-- CTA -->
+<section class="cta-section reveal">
+  <h2>Prêt à sécuriser<br/><span>chaque push</span> ?</h2>
+  <p>MobSecOps s'intègre en quelques minutes dans votre workflow GitHub existant.</p>
+  <div class="hero-ctas">
+    <a href="#architecture" class="btn-primary">Voir l'architecture →</a>
+    <a href="#api" class="btn-outline">Documentation API</a>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer>
+  <div class="logo">Mob<span>Sec</span>Ops</div>
+  <p>Pipeline de sécurité Android — 9 scanners · IA Groq · Discord</p>
+  <p style="font-family:'JetBrains Mono',monospace;font-size:0.72rem;color:var(--muted)">v2.0.0 — FastAPI · Docker · Python 3.11</p>
+</footer>
+
+<script>
+// ── TERMINAL ANIMATION ──────────────────────────────────────────────
+const lines = [
+  { text: '$ mobsecops pipeline start', cls: 't-cyan t-bold' },
+  { text: '→ Webhook reçu: myapp@a3f9bc12 [main]', cls: 't-muted' },
+  { text: '→ Repo cloné, APK détecté: myapp_a3f9bc12.apk', cls: 't-muted' },
+  { text: '', cls: '' },
+  { text: '┌ Lancement de 9 scanners en parallèle...', cls: 't-cyan' },
+  { text: '├ [mobsf]       scan APK...', cls: 't-muted' },
+  { text: '├ [gitleaks]    scan repo...', cls: 't-muted' },
+  { text: '├ [androguard]  analyse DEX...', cls: 't-muted' },
+  { text: '├ [permissions] audit...', cls: 't-muted' },
+  { text: '├ [network]     extraction URLs...', cls: 't-muted' },
+  { text: '├ [syft/grype]  SBOM + CVE...', cls: 't-muted' },
+  { text: '', cls: '' },
+  { text: '✓ gitleaks      3.1s  — score: 50  [1 CRITICAL]', cls: 't-red' },
+  { text: '✓ androguard    8.4s  — score: 72  [2 high]', cls: 't-orange' },
+  { text: '✓ permissions   4.2s  — score: 68  [3 medium]', cls: 't-yellow' },
+  { text: '✓ network       6.1s  — score: 80  [1 medium]', cls: 't-yellow' },
+  { text: '✓ mobsf        45.2s  — score: 61  [1 critical, 3 high]', cls: 't-red' },
+  { text: '✓ syft_grype   18.7s  — score: 55  [3 high CVE]', cls: 't-orange' },
+  { text: '', cls: '' },
+  { text: '→ Rapport IA en cours (Groq llama-3.1)...', cls: 't-cyan' },
+  { text: '→ risk_level: HIGH | score_global: 64/100', cls: 't-orange t-bold' },
+  { text: '→ push_recommendation: FALSE', cls: 't-red t-bold' },
+  { text: '', cls: '' },
+  { text: '✓ Notification Discord envoyée', cls: 't-green' },
+  { text: '🚫 Pipeline terminé — PUSH BLOQUÉ (1 critical, 9 high)', cls: 't-red t-bold' },
+];
+
+const body = document.getElementById('terminal-body');
+let i = 0;
+function addLine() {
+  if (i >= lines.length) {
+    const cursor = document.createElement('span');
+    cursor.className = 'cursor';
+    body.appendChild(cursor);
+    return;
+  }
+  const div = document.createElement('div');
+  div.className = 'term-line ' + (lines[i].cls || '');
+  div.style.animationDelay = '0ms';
+  div.textContent = lines[i].text || '\u00a0';
+  body.appendChild(div);
+  i++;
+  setTimeout(addLine, lines[i-1].text ? 120 : 40);
+}
+setTimeout(addLine, 800);
+
+// ── SCROLL REVEAL ──────────────────────────────────────────────────
+const observer = new IntersectionObserver((entries) => {
+  entries.forEach(e => {
+    if (e.isIntersecting) {
+      e.target.classList.add('visible');
+      observer.unobserve(e.target);
+    }
+  });
+}, { threshold: 0.1 });
+
+document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
+
+// ── SCANNERS STAGGER ──────────────────────────────────────────────
+document.querySelectorAll('.scanner-card, .svc-card, .feat-card').forEach((el, i) => {
+  el.style.transitionDelay = (i * 0.05) + 's';
+});
+
+// ── CURL TABS ─────────────────────────────────────────────────────
+document.querySelectorAll('.curl-tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    const panel = tab.dataset.panel;
+
+    // Update tabs
+    document.querySelectorAll('.curl-tab').forEach(t => t.classList.remove('active'));
+    tab.classList.add('active');
+
+    // Update panels
+    document.querySelectorAll('.curl-panel').forEach(p => p.classList.remove('active'));
+    const target = document.getElementById('panel-' + panel);
+    if (target) target.classList.add('active');
+  });
+});
+
+// ── COPY PANEL ────────────────────────────────────────────────────
+function copyPanel(panelId) {
+  const panel = document.getElementById(panelId);
+  if (!panel) return;
+  const codeEl = panel.querySelector('.curl-code');
+  if (!codeEl) return;
+
+  const text = codeEl.innerText || codeEl.textContent;
+  navigator.clipboard.writeText(text).then(() => {
+    // Visual feedback on the clicked button
+    const btn = panel.querySelector('.copy-btn');
+    if (btn) {
+      const original = btn.textContent;
+      btn.textContent = 'Copié ✓';
+      btn.classList.add('copied');
+      setTimeout(() => {
+        btn.textContent = original;
+        btn.classList.remove('copied');
+      }, 2000);
+    }
+  }).catch(() => {
+    // Fallback for older browsers
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+
+    const btn = panel.querySelector('.copy-btn');
+    if (btn) {
+      const original = btn.textContent;
+      btn.textContent = 'Copié ✓';
+      btn.classList.add('copied');
+      setTimeout(() => {
+        btn.textContent = original;
+        btn.classList.remove('copied');
+      }, 2000);
+    }
+  });
+}
+</script>
+</body>
+</html>
